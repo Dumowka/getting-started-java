@@ -42,9 +42,10 @@
 - Фаза 5 реализована 2026-10-20 в ветке `phase-5` (запушена в `origin`; PR #6 влит в `master`): workflow GitHub Actions `ui-tests.yml`; в реальном GitHub Actions проверены успешный запуск 3/3, контролируемое падение assertion, ошибка компиляции и отсутствие результатов Allure. После слияния проверены запуск на `master` с публикацией отчёта в Pages и ручной запуск на ветках с input по умолчанию; input `1920x1080` и публикация при упавших тестах не проверены. Детали — в разделе фазы 5.
 - Фаза 6 реализована 2026-10-20 в ветке `phase-6` (запушена в `origin`; PR #7 влит в `master`): job `notify` и скрипт `scripts/telegram_notify.py`; в реальном GitHub Actions проверены пропуск без секретов, отправки для успеха, падения assertion и ошибки компиляции (доставку в чат подтвердил пользователь) и ошибка Telegram API. Временные ветки проверок удалены. Детали — в разделе фазы 6.
 - Фаза 7 реализована 2026-10-20 в ветке `phase-7` (запушена в `origin`; PR не открывался): Jenkinsfile для общего Jenkins школы https://jenkins.qa.guru, браузер — Selenoid школы через `selenide.remote`; на реальных агентах проверены успешные сборки с `1366x768` и `1920x1080`, контролируемое падение assertion, ошибка компиляции, отсутствие результатов Allure и ошибка отправки в Telegram. Реальная доставка в Telegram из Jenkins не проверена: у агентов нет доступа к `api.telegram.org`. Детали — в разделе фазы 7.
-- Фазы 8–9 не реализованы.
+- Фаза 8 (review) выполнена 2026-10-20 в ветке `phase-8` (один коммит с планом; не запушена): объект — `master` `1bbd8fb` (merge PR #8). Чистый клон, локальные прогоны (3/3 headed с defaults, 3/3 headless 1920x1080), диагностика свойств и lifecycle, контролируемое падение и отчёт Allure, разбор реальных запусков GitHub Actions, закрепления actions и настроек, actionlint с shellcheck, фикстурные тесты скрипта Telegram, поиск секретов и generated-файлов по всей истории. Критических findings нет; findings, риски и непроверенное — в разделе фазы 8. Сборки Jenkins мной не проверены (нет доступа к API).
+- Фаза 9 не реализована.
 
-Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 8, после подтверждения пользователя.
+Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 9, после подтверждения пользователя.
 
 ## Фаза 0 — Baseline
 
@@ -695,13 +696,110 @@ Job `sirdumowka-getting-started-java` (Multibranch), сборки запуска
 
 ## Фаза 8 — Review
 
-Статус: не реализована.
+Статус: выполнена 2026-10-20 в ветке `phase-8`, созданной от `master` после fast-forward до `1bbd8fb` (merge PR #8, фаза 7). Объект review — `1bbd8fb5acfa79e55ccb0267b7d77ed0b02ca701`. Один коммит с обновлением плана, без push. Объём этапа A пользователь подтвердил и отдал детали на усмотрение исполнителя. Findings не исправлялись — это объём фазы 9. Фаза 9 ожидает подтверждения пользователя.
+
+Объём фазы:
 
 - Согласовать объём review и допустимость изменений.
 - Проверить реализованные фазы на чистом checkout: wrapper и toolchain, сборку, тесты, передачу свойств, lifecycle браузера, Allure-отчёт.
 - Проверить CI по реальным запускам: успешный и контролируемые падения, закрепление версий, permissions, публикацию отчёта.
 - Проверить отсутствие секретов и generated-файлов в git.
 - Зафиксировать findings, риски и непроверенное.
+
+### Решения этапа A
+
+- Только чтение и локальные проверки: без новых запусков GitHub Actions и сборок Jenkins, без отправок в Telegram, push и изменений настроек GitHub и Jenkins.
+- Чистый checkout — `git clone` локального репозитория в scratchpad вне репозитория, `git checkout 1bbd8fb`; временная диагностика и контролируемое падение — только в клоне. Кэши `~/.gradle` и `~/.npm` общие с рабочей машиной.
+- GitHub — только чтение через `gh` (запуски, логи, артефакты, настройки, имена secrets) и один GET сайта Pages. actionlint 1.7.12 и shellcheck 0.11.0 — в scratchpad, со сверкой sha256 с digest релиза.
+- Jenkins — только анонимное чтение: путь к файлу с токеном пользователя не передавался и не искался.
+
+### Проверки
+
+Все команды выполнены в клоне `1bbd8fb` в scratchpad, `JAVA_HOME` не задан (Launcher JVM — Java 26.0.2.1), Node 26.9.0, npm 11.19.1. После проверок `git status` клона чистый, HEAD — `1bbd8fb`.
+
+Wrapper, toolchain, зависимости:
+
+- sha256 `gradle-wrapper.jar` — `3b8a2577…8e98`, совпадает с https://services.gradle.org/distributions/gradle-9.8.2-wrapper.jar.sha256; 9.8.2 — `current` на services.gradle.org. Режим `gradlew` в индексе — `100755`; `gradlew.bat` в рабочем дереве с CRLF; `git diff --check` по всему дереву `1bbd8fb` — без замечаний.
+- `./gradlew --version` — Gradle 9.8.2; `javaToolchains` находит JDK 17, 21, 24; в JVM тестов `java.version=21.0.12.1`.
+- `dependencies --configuration testRuntimeClasspath`: Selenide 7.18.2 (Selenium 4.49.0), JUnit Jupiter и `junit-platform-launcher` 6.1.3 (транзитивные 6.1.0 поднимаются до 6.1.3), Allure 3.0.0 (`allure-jupiter`, `allure-selenide`, `allure-java-commons`, `allure-junit-platform`); `agent` — `aspectjweaver` 1.9.25.1.
+- `./gradlew testClasses` — BUILD SUCCESSFUL. `npm ci` — exit 0, `found 0 vulnerabilities`; `npx allure --version` — 3.21.0. `package-lock.json`: lockfileVersion 3, 158 пакетов, у всех есть `integrity`, все `resolved` — registry.npmjs.org.
+
+Тесты (результаты — по `TEST-tests.SearchTests.xml`; после каждого запуска `pgrep chromedriver` пуст):
+
+- `./gradlew test --rerun-tasks --console=plain` (defaults, headed): exit 0, BUILD SUCCESSFUL in 2m 12s, `tests="3" skipped="0" failures="0" errors="0"`; 46.1 / 41.5 / 43.7 с. В `build/allure-results` — 3 `*-result.json`, 4 `*-container.json`.
+- `./gradlew test -Dselenide.headless=true -Dselenide.browserSize=1920x1080 --rerun-tasks --console=plain` — впервые за проект локально: exit 0, BUILD SUCCESSFUL in 1m 41s, 3/3; 43.9 / 41.8 / 15.2 с; ровно 3 результата Allure (прошлые удалены `doFirst`).
+- Длительность снова определяется медленной загрузкой страниц GitHub (см. «Расследование длительности» фазы 3). stderr тестов — только предупреждение Selenium о CDP 155/153.
+- Повторный `./gradlew test` без `--rerun-tasks` с теми же свойствами: `> Task :test UP-TO-DATE`, BUILD SUCCESSFUL in 248ms — тесты не выполнялись, подложенный в `build/allure-results` файл остался (finding F1).
+
+Передача свойств и lifecycle — временный класс `Phase8ReviewDiagnosticsTest extends TestBase` в клоне (тест без браузера и два теста с `open("about:blank")`, `@AfterAll`):
+
+- Defaults с `-Dselenide.timeout=1 -Dp8.foo=bar`: 3/3; в JVM тестов нет ни одного свойства `selenide.*` и `p8.*`; `Configuration`: `https://github.com`, `chrome`, `1366x768`, `headless=false`, `remote=null`, `timeout=4000`; окно 1366x768, UA без `Headless`.
+- `-Dselenide.baseUrl=https://example.com -Dselenide.browser=chrome -Dselenide.browserSize=1920x1080 -Dselenide.headless=true`: 3/3; в JVM ровно эти четыре свойства, `Configuration` с ними совпадает, окно 1920x1080, UA `Headless`.
+- Lifecycle: перед каждым тестом `hasWebDriverStarted=false` и 0 дочерних процессов; во время теста — 8 дочерних процессов (chromedriver и Chrome); у двух тестов разные session id; в `@AfterAll` — `false` и 0.
+- `-Dselenide.remote=http://127.0.0.1:9/wd/hub`: свойство дошло до JVM, `Configuration.remote` задан; браузерный тест за 0.11 с — `SessionNotCreatedException` → `ConnectException`, локальный браузер не запускался.
+- `-Dselenide.remote=` (пустое): свойство передано пустым, `Configuration.remote=null`, тест прошёл на локальном Chrome (finding F6).
+
+Контролируемое падение (в клоне ожидаемый текст `QA.GURU-PHASE8-CONTROLLED-FAIL`, `--tests tests.SearchTests.successfulSearchTest -Dselenide.headless=true`):
+
+- exit 1, `SearchTests > successfulSearchTest() FAILED`, `com.codeborne.selenide.ex.ElementShould at SearchTests.java:13`, BUILD FAILED in 47s; `pgrep chromedriver` пуст.
+- Результат Allure: `failed`, сообщение `Element should have text "QA.GURU-PHASE8-CONTROLLED-FAIL" {[data-testid='results-list']}`, trace 179 строк; дерево шагов `@Step` и шагов Selenide, упавший шаг `should have(...)` с вложениями `Screenshot` (PNG 147 КБ) и `Page source` (HTML 249 КБ); последний шаг — `$("webdriver") close()`.
+- Причина — assertion: на скриншоте обычная выдача (`10.5k results`), в page source нет «Too many requests».
+- `npx allure generate build/allure-results --output build/allure-report --clean` — exit 0, 121 файл, вложение PNG в `data/attachments`, `widgets/statistic.json` — `{"total":1,"failed":1}`; каталог `allure-report/` в корне не создан. Генерация по пустому каталогу — exit 0 (подтверждает необходимость проверки `*-result.json` в CI и Jenkins).
+- Изменения клона откатаны (`git checkout`, удаление класса диагностики).
+
+GitHub Actions (только чтение):
+
+- Все 12 run id из фаз 5–7 существуют, их события, ветки и итоги совпадают с планом.
+- Два запуска на `master`, которых в плане нет: 39404277218 (push, merge PR #7) и 39417974805 (push, merge PR #8, `1bbd8fb`) — success; во всех трёх jobs все шаги success, включая `Upload Pages artifact` и `deploy-pages`. Job `notify` в обоих: `✅ UI tests: PASSED`, `CI: GitHub Actions (push)`, `Branch: master`, `Tests: total 3, passed 3…`, строка `Report: https://dumowka.github.io/getting-started-java/`, `Telegram API: HTTP 200, ok=true`, `message_id` 6 и 7. Тем самым пункты фазы 6 «уведомление на push в `master`» и «строка `Report`» проверены по ответу API; доставку этих двух сообщений в чат пользователь не подтверждал.
+- Закрепление: все 8 actions (`checkout` v7.0.1, `setup-java` v6.1.0, `gradle/actions` v6.4.0, `setup-node` v7.1.0, `upload-artifact` v7.0.2, `upload-pages-artifact` v5.0.0, `deploy-pages` v5.0.1, `download-artifact` v8.0.2) — SHA совпадают с тегами по `git ls-remote` (с разыменованием), все теги — `releases/latest` на 2026-10-20.
+- actionlint 1.7.12 (sha256 архива и `checksums.txt` совпали с digest, `shasum -c` — OK) с shellcheck 0.11.0 (sha256 совпал с digest): 0 ошибок, exit 0; контрольный workflow с `echo $FOO` дал SC2086, то есть shellcheck действительно вызывался. Shell-фрагменты `Jenkinsfile` (проверка параметра, команда тестов, проверка результатов) — shellcheck `-s sh`: 0 замечаний.
+- Permissions: `permissions: {}` на уровне workflow, `contents: read` у `test` и `notify`, `pages: write` и `id-token: write` только у `deploy-pages`; `checkout` с `persist-credentials: false`; secrets только в `env` шага отправки. Данные GitHub попадают в скрипты через `env`, не подстановкой в shell.
+- Настройки: репозиторий публичный, Actions `allowed_actions: all`, `sha_pinning_required: false`, `default_workflow_permissions: read`; Pages `build_type: workflow`, `https_enforced: true`; environment `github-pages` — только branch policy `master`; secrets — `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (только имена); `master` без branch protection. Сайт Pages — HTTP 200, `text/html`.
+- Кэш Gradle на `master` работает: 39398617650 — `0 restored, 1 saved`, 39404277218 — `1 restored`, 39417974805 — `1 saved` (ключ сменился: PR #8 менял `build.gradle`).
+- Версия Chrome на runner меняется между запусками: 155.0.8059.39 в 39398617650 и 39417974805, 155.0.8059.84 в 39404277218.
+- Секреты в логах: в логах всех 14 запусков 0 совпадений с шаблоном токена бота, `api.telegram.org`, `ghp_`/`github_pat_`; в env шага отправки — `***`.
+
+Скрипт Telegram:
+
+- `unittest` в scratchpad, 15 тестов, `python3 -I -B`, без переменных `TELEGRAM_*`, сети нет (`urlopen` подменён): Python 3.9.6 — OK, Python 3.14.8 — OK. Фикстуры — реальные JUnit XML из артефактов 39417974805 (3 passed) и 39402426885 (2 passed, 1 failed), битый XML, отсутствующий каталог. Покрыто: PASSED, TESTS FAILED, BUILD FAILED (компиляция и до тестов, включая пустые outcomes, как в Jenkins), TESTS FAILED: no JUnit XML, CI FAILED after tests, TEST RESULTS UNREADABLE, отсутствие одного секрета; ответы 200 `ok:true`, 200 `ok:false` с переводом строки, HTTP 401, `URLError`, не-JSON, exit code `main` 1; фиктивные токен и chat id в вывод не попадают. Отдельный тест подтвердил, что `http.client.IncompleteRead` не перехватывается (finding F5).
+
+Секреты и generated-файлы в git (рабочий репозиторий, 20 refs, включая `origin/*`, 58 коммитов):
+
+- `git log --all -p` по шаблонам: токен бота, токены GitHub, URL с учётными данными, приватные ключи, AWS-ключи, присваивания `password|secret|api_key` — 0 совпадений. Шаблон `selenoid…|/wd/hub` — 1 совпадение в `docs/plans/ui-test-project.md` (коммит `2fe3d94`): это `http://127.0.0.1:9/wd/hub` из локальной проверки фазы 7, не секрет.
+- Все 118 blob-ов истории, включая бинарные, — 0 совпадений по шаблонам токенов, ключей и URL с учётными данными.
+- Generated-файлы в истории: `.gradle/9.6.0/…`, `build/classes`, `build/reports`, `build/test-results`, `build/tmp` добавлены в `299eca9` и удалены в `09be4d9` — оба коммита из исходного учебного репозитория, до фазы 0; секретов в них нет (скан выше). В дереве `1bbd8fb` generated-файлов нет; blob-ов больше 200 КБ в истории нет.
+- `git check-ignore`: игнорируются `build/`, `.gradle/`, `bin/`, `node_modules/`; не игнорируются `scripts/__pycache__/`, `allure-report/` и `allure-results/` в корне, `.idea/`, `*.iml`, `.vscode/`, `.DS_Store`, `out/` (finding F4).
+- Локальные ссылки в AGENTS.md и плане ведут на существующие файлы.
+
+Jenkins: анонимный GET `https://jenkins.qa.guru/job/sirdumowka-getting-started-java/api/json` — HTTP 404 (job скрыт от анонимного пользователя). Сборки, логи и артефакты Jenkins мной не проверялись; `Jenkinsfile` проверен только статически и shellcheck фрагментов.
+
+Временные файлы (клон, логи и артефакты запусков, actionlint, shellcheck, фикстурные тесты) были только в scratchpad и удалены после review.
+
+### Findings
+
+Критических и высоких нет. Нумерация — для согласования в фазе 9.
+
+| № | Серьёзность | Где | Суть | Проверено |
+|---|---|---|---|---|
+| F1 | Medium | `build.gradle`, задача `test` | Тесты зависят от внешнего сайта, но задача `test` может быть UP-TO-DATE: повторный `./gradlew test` без `--rerun-tasks` даёт BUILD SUCCESSFUL без выполнения тестов, `doFirst` не выполняется, `build/allure-results` содержит прошлые результаты. CI и Jenkins не затронуты (чистый checkout, `deleteDir()`); базовые команды плана используют `--rerun-tasks`. | запуском в клоне |
+| F2 | Medium (риск) | `TestBase` | Таймаут Selenide — 4 с по умолчанию; при медленной сети локально результаты могут появиться позже (падение `master` №1 в фазе 3, `TimeoutException` в фазе 7, 41–46 с на тест в этой фазе). В CI тесты идут 1–4 с. Изменение таймаутов или стратегии загрузки требует согласования. | по отчётам фаз и длительности прогонов |
+| F3 | Low | план | В «Текущем состоянии» и статусе фазы 7 написано «PR не открывался», а в `master` влит PR #8 (`1bbd8fb`). Устарели: в фазе 6 — «не проверены уведомление на push в `master` и строка `Report`» (проверены выше), в фазе 5 — «кэша Gradle не было» (на `master` кэш работает). | сверкой с git и логами |
+| F4 | Low | `.gitignore` | Не исключены `scripts/__pycache__/` (известно с фазы 6), `allure-report/` и `allure-results/` в корне, файлы IDE (`.idea/`, `*.iml`, `.vscode/`, `out/`) и `.DS_Store`. | `git check-ignore` |
+| F5 | Low | `scripts/telegram_notify.py` | `send_message` перехватывает `HTTPError` и `OSError`, но не `http.client.HTTPException` (например, `IncompleteRead` при чтении ответа): будет traceback и exit 1. Падение остаётся видимым, токен в traceback не попадает. | фикстурным тестом |
+| F6 | Low | `build.gradle` / Selenide | Пустой `-Dselenide.remote=` передаётся в JVM, Selenide считает его отсутствующим и молча запускает локальный Chrome. В Jenkins пустой credential дал бы непонятную ошибку запуска локального браузера на агенте. | запуском в клоне |
+| F7 | Low | `Jenkinsfile`, `post { always }` | Если стадия `Run tests` начата, но XML нет (например, нет credential Selenoid или Gradle упал до тестов), `junit` без `allowEmptyResults` бросает ошибку; проверка и генерация Allure пропускаются, сообщение — «TESTS FAILED: no JUnit XML», причина видна только в логе. Итог FAILURE корректен. | статически |
+| F8 | Info | `build.gradle` | `configurations.agent.singleFile` разрешается на этапе конфигурации при каждом вызове Gradle (уже отмечено в фазе 4); configuration cache не проверялся. | статически |
+| F9 | Info | настройки GitHub | `master` без branch protection; `allowed_actions: all`, `sha_pinning_required: false` (закрепление держится на дисциплине); repository secrets доступны `workflow_dispatch` из любой ветки (решение фазы 6). | `gh api` |
+| F10 | Info | CI | Версия Chrome на runner меняется между запусками (155.0.8059.39 / .84); предупреждение Selenium CDP 155/153 сохраняется. Известно с фазы 5. | логи запусков |
+
+### Ограничения и непроверенное
+
+- Сборки Jenkins (успех, 1920x1080, падения, no-results, tg-error) мной не проверены: нет доступа к API; утверждения раздела фазы 7 о них — отчёт предыдущего исполнителя. Declarative linter Jenkins не запускался. Сборка ветки `master` в Jenkins (теперь с `Jenkinsfile`) не проверялась.
+- Доставка в чат сообщений 39404277218 и 39417974805 — только по ответу Telegram API.
+- Не проверены (как и в фазах 5–7): публикация в Pages при упавших тестах на `master`, `concurrency`, input `1920x1080` в CI, отмена и таймаут job и сборки, падение checkout в Jenkins.
+- Окружение не «холодное»: общие `~/.gradle` и `~/.npm`; Node.js 24 локально не проверялся (только 26.9.0). Не проверялись Windows (`gradlew.bat`), IDE, configuration cache, параллельный запуск тестов.
+- Поиск секретов — по шаблонам; секрет нестандартного формата шаблоны могут не найти. Логи Jenkins на секреты не проверялись.
+- Однократные успешные прогоны не гарантируют стабильность github.com и неизменность данных; HTTP 429 в этой фазе не наблюдался.
 
 ## Фаза 9 — Доработка findings финального review
 
