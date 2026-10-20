@@ -21,10 +21,11 @@
 
 - Фаза 0 завершена 2026-10-20: проверки выполнены, baseline 1/1 получен (Gradle 9.8.1 из локального кэша, Java 21), решения по параметрам, Java, wrapper и Page Object согласованы. Детали и ограничения — в разделе фазы 0.
 - Фаза 1 реализована 2026-10-20 в ветке `phase-1` (один коммит; PR #2 влит в `master`): Gradle Wrapper 9.8.2, Java 21 toolchain, TestBase, передача четырёх свойств `selenide.*`; финальные запуски 1/1 с defaults и с переопределением. Детали — в разделе фазы 1.
-- Фаза 2 реализована 2026-10-20 в ветке `phase-2` (коммит фазы и коммит с обновлением плана; по решению пользователя запушена в `origin` и открыт PR #3 в `master`, не влита): в SearchTests добавлены `repoQualifierSearchTest` и `searchWithoutResultsTest`; весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 2.
-- Фазы 3–9 не реализованы: Page Object, Allure и CI нет.
+- Фаза 2 реализована 2026-10-20 в ветке `phase-2` (коммит фазы и коммит с обновлением плана; по решению пользователя запушена в `origin`; PR #3 влит в `master`): в SearchTests добавлены `repoQualifierSearchTest` и `searchWithoutResultsTest`; весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 2.
+- Фаза 3 реализована 2026-10-20 в ветке `phase-3` (коммит фазы и коммит с расследованием длительности тестов; не запушена): тесты и TestBase перенесены в пакет `tests`, Page Object (`BasePage`, `SearchPage`, три компонента) — в пакете `pages`; каждый тест отдельно 1/1, весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 3.
+- Фазы 4–9 не реализованы: Allure и CI нет.
 
-Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 3, после подтверждения пользователя.
+Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 4, после подтверждения пользователя.
 
 ## Фаза 0 — Baseline
 
@@ -160,7 +161,7 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 
 ## Фаза 2 — Tests
 
-Статус: реализована 2026-10-20 в ветке `phase-2`, созданной от `master` после fast-forward до `34349bf` (merge PR #2, фаза 1). Один коммит фазы. По решению пользователя 2026-10-20 ветка запушена в `origin/phase-2` и для неё открыт PR #3 в `master`; в `master` не влита. Отдельным коммитом в плане обновлены сведения о push и PR. Сценарии подтверждены пользователем 2026-10-20 по итогам этапа A, включая проверку счётчика `0` во втором сценарии. Фаза 3 ожидает подтверждения пользователя.
+Статус: реализована 2026-10-20 в ветке `phase-2`, созданной от `master` после fast-forward до `34349bf` (merge PR #2, фаза 1). Один коммит фазы. По решению пользователя 2026-10-20 ветка запушена в `origin/phase-2` и для неё открыт PR #3 в `master`; PR #3 влит в `master`. Отдельным коммитом в плане обновлены сведения о push и PR. Сценарии подтверждены пользователем 2026-10-20 по итогам этапа A, включая проверку счётчика `0` во втором сценарии. Фаза 3 ожидает подтверждения пользователя.
 
 Объём фазы:
 
@@ -228,13 +229,67 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 
 ## Фаза 3 — Page Object
 
-Статус: не реализована.
+Статус: реализована 2026-10-20 в ветке `phase-3`, созданной от `master` после fast-forward до `0cabb86` (merge PR #3, фаза 2). Коммит фазы и отдельный коммит с расследованием длительности тестов в плане, push не выполнялся. Структура подтверждена пользователем 2026-10-20 по итогам этапа A: BasePage — вариант с `openPath`, проверки пустой выдачи — три отдельных вызова в тесте. Фаза 4 ожидает подтверждения пользователя.
+
+Объём фазы:
 
 - Подтвердить применимость согласованного стиля к фактическим сценариям.
 - Перенести тесты и TestBase в пакет `tests`, страницы разместить в пакете `pages`.
 - Перенести взаимодействия и локаторы в страницы, проверки — в методы страниц.
 - Добавить BasePage и компоненты сразу, по решению фазы 0.
 - Сохранить локаторы, тестовые данные, assertions и порядок проверок; проверить каждый тест отдельно, весь набор с defaults и в headless; закоммитить изменения.
+
+### Подтверждённая структура
+
+Разбор тестов: во всех трёх повторяются `open("/search")` и ввод запроса с Enter в `[aria-label='Search GitHub']`; на странице выдачи логически самостоятельны поле поиска, область результатов (`results-list` и пустое состояние с заголовком) и боковая навигация по типам выдачи со счётчиком.
+
+- `pages.BasePage` — `abstract`, единственный метод `protected void openPath(String path)` → `Selenide.open(path)`. Общего поведения у страниц пока нет (страница одна); метод — единое место для правила «пути относительны к `baseUrl`».
+- `pages.SearchPage extends BasePage` — fluent-фасад: компоненты в `private final`-полях, все публичные методы возвращают `SearchPage`: `openPage()` (`openPath("/search")`), `search(query)`, `shouldHaveResultsWithText(text)`, `shouldHaveOnlyResultsFromRepository(repository)`, `shouldShowNoMatchingRepositoriesMessage()`, `shouldHaveRepositoriesCount(count)`, `shouldNotHaveResultsList()`. Методы проверок делегируют компонентам. Одна страница, а не две: URL тот же (`/search?q=…`), поле поиска остаётся на странице выдачи. Метод назван `openPage()`, потому что метод `open()` перекрыл бы статический импорт `Selenide.open` в классе.
+- `pages.components.SearchInputComponent` — `search(query)`.
+- `pages.components.SearchResultsComponent` — поле `private final SelenideElement resultsList` (`[data-testid='results-list']` используется дважды); `shouldHaveText`, `shouldHaveOnlyRepository` (цепочка `$$` без изменений), `shouldShowNoMatchingRepositoriesMessage` (`byRole`), `shouldNotExist`.
+- `pages.components.SearchTypeNavigationComponent` — `shouldHaveRepositoriesCount(count)`.
+- Остальные элементы используются по одному разу и ищутся `$()`/`$$()` внутри методов. Компоненты без корневого элемента и без общего родителя: поиск относительно корня (`resultsList.$$(…)`) изменил бы локатор, поэтому селекторы остались полными строками.
+- Тестовые данные (запросы и ожидаемые `QA.GURU`, `selenide/selenide`, `0`) передаются из тестов; текст заголовка остаётся в компоненте как часть локатора `byRole`.
+- В `searchWithoutResultsTest` проверки — три отдельных вызова в цепочке теста в прежнем порядке; `shouldNotHaveResultsList()` последний (причина — в разделе фазы 2).
+
+### Изменения
+
+- `src/test/java/TestBase.java` → `src/test/java/tests/TestBase.java`: добавлена только строка `package tests;`, логика не менялась.
+- `src/test/java/SearchTests.java` → `src/test/java/tests/SearchTests.java`: `package tests;`, поле `SearchPage`, тесты — fluent-цепочки страницы.
+- Новые: `src/test/java/pages/BasePage.java`, `src/test/java/pages/SearchPage.java`, `src/test/java/pages/components/SearchInputComponent.java`, `SearchResultsComponent.java`, `SearchTypeNavigationComponent.java`.
+- `build.gradle`, версии зависимостей и свойства `selenide.*` не менялись.
+
+### Проверки
+
+Все запуски выполнены из корня репозитория через `./gradlew`, `JAVA_HOME` не задан, без временной диагностики в `src`. Результаты — по `build/test-results/test/TEST-tests.SearchTests.xml`.
+
+- `./gradlew test --tests "tests.SearchTests.successfulSearchTest" --rerun-tasks --console=plain`: exit code 0, `tests="1" skipped="0" failures="0" errors="0"`, 15.7 с (первый запуск без захвата exit code — тоже 1/1, 13.8 с).
+- `./gradlew test --tests "tests.SearchTests.repoQualifierSearchTest" --rerun-tasks --console=plain`: exit code 0, 1/1, 41.0 с.
+- `./gradlew test --tests "tests.SearchTests.searchWithoutResultsTest" --rerun-tasks --console=plain`: exit code 0, 1/1, 41.1 с.
+- `./gradlew test --rerun-tasks --console=plain` (defaults, headed, 1366x768): BUILD SUCCESSFUL in 44s, `tests="3" skipped="0" failures="0" errors="0"`; 11.1 с, 16.3 с, 16.9 с.
+- `./gradlew test -Dselenide.headless=true --rerun-tasks --console=plain`: BUILD SUCCESSFUL in 1m 45s, `tests="3" skipped="0" failures="0" errors="0"`; 16.7 с, 42.2 с, 46.3 с.
+- После каждого запуска `pgrep chromedriver` пуст. Падений не было.
+- Сохранение поведения относительно `master`: множества различных строковых литералов (локаторы, тестовые данные, `heading`, `/search`) в `master:src/test/java/SearchTests.java` и в новых файлах совпадают (`grep -ohE '"[^"]*"' | sort | uniq` + `diff`); так же совпадают множества вызовов `open/setValue/pressEnter/shouldHave/shouldBe/shouldNot/filterBy/byRole/text/exactText/sizeGreaterThan/size/not/exist/visible`. Кратность меньше только из-за свёртки повторов (`/search` и поле поиска — 3 → 1, `results-list` — 2 → 1 поле). Строки assertions в компонентах совпадают с `master` дословно, кроме подстановки параметров; порядок вызовов в тестах совпадает с порядком проверок в `master`. `diff` TestBase с `master` — только `package tests;` и пустая строка.
+- `grep` по `src` на `diag|Phase3|probe|System.out|executeJavaScript|sleep|@Disabled|byText|type-switcher` ничего не находит.
+
+### Ограничения и непроверенное
+
+- Длительность тестов в этой фазе заметно выше, чем в фазе 2 (например, `repoQualifierSearchTest` в headless 42.2 с против 5.5 с, отдельные запуски около 41 с). Причина установлена (см. «Расследование длительности»): медленная загрузка статических ресурсов GitHub по медленному сетевому каналу, перенос на Page Object на неё не влияет. HTTP 429 не наблюдался.
+- Перенос выполнен `git mv`. `TestBase` git показывает как rename (97%); `SearchTests` изменён почти целиком (41 → 31 строка, общих строк мало), поэтому git показывает его как удаление `src/test/java/SearchTests.java` и добавление `src/test/java/tests/SearchTests.java`.
+- Ограничения фазы 2 (внутренняя разметка GitHub, английский текст заголовка, неконтролируемые данные, боковая навигация при узком окне) действуют без изменений.
+- Не проверялись: запуск с `-Dselenide.browserSize=1920x1080` из базовых команд, запуск из IDE, параллельный запуск тестов, другие браузеры.
+
+### Расследование длительности
+
+Выполнено 2026-10-20 по запросу пользователя после коммита фазы. Код тестов и страниц не менялся.
+
+- A/B: `master` (`0cabb86`, временный detached worktree вне репозитория) и `phase-3` поочерёдно, `./gradlew test -Dselenide.headless=true --rerun-tasks --console=plain`. `master` №1: 45.1 / 44.9 / 45.0 с, BUILD FAILED; `phase-3` №1: 14.8 / 12.4 / 18.1 с, 3/3; `master` №2: 12.4 / 12.8 / 10.9 с, 3/3; `phase-3` №2: 8.6 / 8.7 / 9.7 с, 3/3. Длительность меняется от запуска к запуску одинаково для обеих версий, значит причина не в переносе.
+- Падение `master` №1: `repoQualifierSearchTest` — `ListSizeMismatch` на `sizeGreaterThan(0)` (`SearchTests.java:28`). На скриншоте Selenide — обычная выдача issues `selenide/selenide` (1.4k results), признаков HTTP 429 нет; в page source, снятом после истечения ожидания, 10 ссылок `data-hovercard-type="repository"`. То есть результаты отрисовались позже 4-секундного таймаута Selenide — проявление той же медленной загрузки, не ошибка локатора.
+- Разбивка по шагам: временный `@RepeatedTest(4)`-класс в `src/test/java/tests` повторял сценарий `repoQualifierSearchTest` с замерами и Navigation/Resource Timing браузера (4 запуска headed, 4 headless). Старт драйвера 0.4–0.6 с; `open("/search")` 8.6–17.6 с; `setValue` + `pressEnter` < 0.1 с; появление результатов после Enter 0.2–0.8 с. Внутри `open`: HTML получен за 0.6–2.0 с (`responseEnd`), `domContentLoaded` — 8.6–17.6 с; 67–100 JS-ресурсов `github.githubassets.com` грузятся по 3–16 с каждый. Поиск после Enter — SPA-переход без новой навигации.
+- Сеть вне браузера (curl): 97 JS-ресурсов страницы `/search` (около 4 МБ без сжатия) в 6 потоков — 16.8 с, примерно 240 КБ/с, один поток 30–80 КБ/с. Тот же файл `three.min.js` 0.128 (603 КБ) с cdnjs.cloudflare.com и cdn.jsdelivr.net — около 6.8 с (около 88 КБ/с). Канал медленный в целом, а не только до GitHub.
+- Вывод: каждый тест получает новую сессию браузера с пустым кэшем, а `open()` ждёт загрузки страницы, поэтому время теста определяется скоростью загрузки примерно сотни JS-ресурсов GitHub и колеблется вместе со скоростью сети. При особенно медленной загрузке результаты могут появиться позже таймаута Selenide (4 с) — тогда тест падает, как `master` №1. Причина медленного канала (провайдер, Wi-Fi, VPN) не устанавливалась; в фазе 2 тот же код выполнялся за 5.5–12.4 с.
+- Временный диагностический класс и worktree удалены; `grep` по `src` на `diag|Phase3|probe|System.out|executeJavaScript|sleep|@Disabled|RepeatedTest|performance|scratchpad` ничего не находит.
+- Таймауты, стратегию загрузки страницы и кэш браузера не меняли: это изменило бы поведение тестов и логику TestBase и требует отдельного согласования.
 
 ## Фаза 4 — Allure Report 3
 
