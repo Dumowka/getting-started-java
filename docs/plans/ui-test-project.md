@@ -16,16 +16,20 @@
 - Параметры запуска — штатные свойства Selenide: `selenide.baseUrl`, `selenide.browser`, `selenide.browserSize`, `selenide.headless`. Defaults задаются в проекте явно: baseUrl=https://github.com, browser=chrome, browserSize=1366x768, headless=false.
 - Из Gradle в JVM тестов передаются только эти четыре свойства. В CI явно передавать `selenide.headless=true`.
 - Page Object: fluent API; проверки — в методах страниц; элемент выносится в поле `private final SelenideElement`, если используется больше одного раза, иначе `$()` внутри метода; пакеты `tests` и `pages`; компоненты и BasePage — сразу.
+- Allure (фаза 4, согласовано 2026-10-20): генератор — Allure Report 3 (npm-пакет `allure` 3.21.0) как devDependency проекта с точной версией и `package-lock.json`, `node_modules/` в `.gitignore`; запуск через `npx allure`. JVM-адаптеры — Allure Java 3.0.0 через `allure-bom`: `allure-jupiter` и `allure-selenide`. AspectJ weaver 1.9.25.1 как `-javaagent` задачи `test`.
+- Шаги Allure: `@Step` с английскими названиями и параметрами только на публичных методах `SearchPage`; технические шаги Selenide — через `AllureSelenide` (`includeSelenideSteps(true)`), при падении — вложения Screenshot и Page source; listener регистрируется в `@BeforeAll` в `TestBase`.
+- Результаты Allure — `build/allure-results` (задаётся в `src/test/resources/allure.properties`), очищаются в `doFirst` задачи `test`; отчёт — `build/allure-report`, генерируется с `--clean`.
 
 ## Текущее состояние
 
 - Фаза 0 завершена 2026-10-20: проверки выполнены, baseline 1/1 получен (Gradle 9.8.1 из локального кэша, Java 21), решения по параметрам, Java, wrapper и Page Object согласованы. Детали и ограничения — в разделе фазы 0.
 - Фаза 1 реализована 2026-10-20 в ветке `phase-1` (один коммит; PR #2 влит в `master`): Gradle Wrapper 9.8.2, Java 21 toolchain, TestBase, передача четырёх свойств `selenide.*`; финальные запуски 1/1 с defaults и с переопределением. Детали — в разделе фазы 1.
 - Фаза 2 реализована 2026-10-20 в ветке `phase-2` (коммит фазы и коммит с обновлением плана; по решению пользователя запушена в `origin`; PR #3 влит в `master`): в SearchTests добавлены `repoQualifierSearchTest` и `searchWithoutResultsTest`; весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 2.
-- Фаза 3 реализована 2026-10-20 в ветке `phase-3` (коммит фазы и коммит с расследованием длительности тестов; не запушена): тесты и TestBase перенесены в пакет `tests`, Page Object (`BasePage`, `SearchPage`, три компонента) — в пакете `pages`; каждый тест отдельно 1/1, весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 3.
-- Фазы 4–9 не реализованы: Allure и CI нет.
+- Фаза 3 реализована 2026-10-20 в ветке `phase-3` (коммит фазы и коммит с расследованием длительности тестов; ветка запушена в `origin`; PR #4 влит в `master`): тесты и TestBase перенесены в пакет `tests`, Page Object (`BasePage`, `SearchPage`, три компонента) — в пакете `pages`; каждый тест отдельно 1/1, весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 3.
+- Фаза 4 реализована 2026-10-20 в ветке `phase-4` (один коммит; не запушена): Allure Report 3.21.0 (npm), Allure Java 3.0.0 (`allure-jupiter`, `allure-selenide`), AspectJ 1.9.25.1, `@Step` на `SearchPage`, вложения при падении; весь набор 3/3 с defaults и в headless, контролируемое падение проверено. Детали — в разделе фазы 4.
+- Фазы 5–9 не реализованы: CI нет.
 
-Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 4, после подтверждения пользователя.
+Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 5, после подтверждения пользователя.
 
 ## Фаза 0 — Baseline
 
@@ -229,7 +233,7 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 
 ## Фаза 3 — Page Object
 
-Статус: реализована 2026-10-20 в ветке `phase-3`, созданной от `master` после fast-forward до `0cabb86` (merge PR #3, фаза 2). Коммит фазы и отдельный коммит с расследованием длительности тестов в плане, push не выполнялся. Структура подтверждена пользователем 2026-10-20 по итогам этапа A: BasePage — вариант с `openPath`, проверки пустой выдачи — три отдельных вызова в тесте. Фаза 4 ожидает подтверждения пользователя.
+Статус: реализована 2026-10-20 в ветке `phase-3`, созданной от `master` после fast-forward до `0cabb86` (merge PR #3, фаза 2). Коммит фазы и отдельный коммит с расследованием длительности тестов в плане. Ветка запушена в `origin/phase-3`, PR #4 влит в `master`. Структура подтверждена пользователем 2026-10-20 по итогам этапа A: BasePage — вариант с `openPath`, проверки пустой выдачи — три отдельных вызова в тесте. Фаза 4 ожидает подтверждения пользователя.
 
 Объём фазы:
 
@@ -293,23 +297,86 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 
 ## Фаза 4 — Allure Report 3
 
-Статус: не реализована.
+Статус: реализована 2026-10-20 в ветке `phase-4`, созданной от `master` после fast-forward до `382986a` (merge PR #4, фаза 3). Один коммит, push не выполнялся. Решения этапа A подтверждены пользователем 2026-10-20 (все предложенные варианты). Фаза 5 ожидает подтверждения пользователя.
 
-### Перед реализацией согласовать
+Объём фазы:
 
-- Генератор отчёта и способ его установки локально и в CI.
-- JVM-адаптеры Allure и их версии.
-- Шаги в отчёте (`@Step` на методах страниц, технические шаги Selenide) и вложения при падении.
-- Расположение результатов и отчёта; оба не должны попадать в git.
+- Этап A: сравнить генераторы, подобрать JVM-адаптеры и версии, предложить шаги, вложения и расположение результатов и отчёта, получить подтверждение.
+- Этап B: установить генератор, подключить адаптеры и AspectJ, добавить шаги и вложения, проверить успешные прогоны, контролируемое падение и отчёт, удалить диагностику, закоммитить.
 
-### Реализация и проверка
+### Решения этапа A
 
-- Разделить JVM-адаптеры Allure и CLI-генератор отчёта.
-- Проверить совместимость выбранных версий с Java 21, JUnit 6 и Selenide по документации; не понижать Java, JUnit и Selenide без согласования.
-- Выбрать и зафиксировать проверенные версии.
-- Проверить актуальную документацию и встроенный --help генератора.
-- Сгенерировать и открыть отчёт, проверить диагностику контролируемого падения.
-- Восстановить успешное состояние, исключить generated artifacts из git и создать коммит.
+Генератор отчёта:
+
+| | Allure Report 3 (npm `allure`) | Allure Report 2 (CLI) |
+|---|---|---|
+| Версия на 2026-10-20 | 3.21.0 (2026-10-16) | 2.46.1 (2026-09-03) |
+| Установка на macOS | `npm install allure` в проект или `-g`; нужен Node.js, поле `engines` в пакете не задано | `brew install allure` или zip/tgz из GitHub Releases + PATH; Java 8+ |
+| CI | `npm ci` + `npx allure` | скачать zip нужной версии |
+| Что появляется в проекте | `package.json`, `package-lock.json`, `node_modules/` (игнорируется) | ничего |
+| Закрепление версии | точная версия + lock-файл, включая транзитивные пакеты | brew — только последняя версия; zip — по имени каталога |
+| Формат Allure Java | «Results produced by Allure Java 3 can be viewed in both Allure Report 3 and Allure Report 2» (migration guide) | то же |
+
+- Выбран Allure Report 3.21.0 как devDependency: одна закреплённая версия локально и в CI (`npm ci`), Node.js уже установлен. Отклонены: `npx allure@3.21.0` без `package.json` (транзитивные зависимости заданы диапазонами) и Gradle-плагин `io.qameta.allure` 4.3.0 (сам скачивает Node/CLI и объединяет адаптеры с генератором).
+- Allure Java 3.0.0 (2026-09-11): требует Java 17+; `allure-junit5` больше не публикуется, замена — `allure-jupiter`. По документации `allure-jupiter` «works with both JUnit 6 and JUnit 5»; README модуля: сборка проверяется на JUnit 6.1.0. `allure-selenide`: «targets Selenide 7.x», в README — проверено на 7.17.0, модуль собран с 7.18.1; 7.18.2 явно не заявлена. Allure Java 3 больше не очищает каталог результатов — это задача сборки.
+- AspectJ weaver 1.9.25.1 (2025-12-17) — его использует сборка allure-java 3.0.0; в документации Allure указана 1.9.25. Поддержка Java 25 появилась в 1.9.25, Java 21 покрыта.
+- `@Step` — только на публичных методах `SearchPage` (фасад); на компонентах нет, чтобы не дублировать шаги. Названия шагов — на английском. Вариант `Allure.step(...)` без агента отклонён: он меняет тела методов.
+- `AllureSelenide`: `screenshots(true)`, `savePageSource(true)`, `includeSelenideSteps(true)`; браузерные логи не включаются. Регистрация — в `@BeforeAll static` в `TestBase`, как в документации Selenide-интеграции; `setUp` и `tearDown` не менялись.
+- Результаты — `build/allure-results` через `src/test/resources/allure.properties` (рекомендация документации JUnit Jupiter); передача свойств из Gradle не затронута. Очистка — `doFirst { delete … }` в задаче `test`. Отклонён вариант `./gradlew clean test`: он стирает весь `build/` и держится на дисциплине. Отчёт — `build/allure-report`, `generate --clean`. Файл `allurerc.*` не нужен: каталог вывода и очистка задаются опциями CLI.
+
+Источники:
+
+- https://github.com/allure-framework/allure-java/releases/tag/3.0.0; README `allure-jupiter`, `allure-junit-platform`, `allure-selenide`, `allure-java-commons` и `build.gradle.kts` в теге 3.0.0
+- https://allurereport.org/docs/guides/allure-java-3-migration/
+- https://allurereport.org/docs/junit5/
+- https://allurereport.org/docs/selenide/
+- https://allurereport.org/docs/v3/install/, https://allurereport.org/docs/v3/configure/, https://github.com/allure-framework/allure3/releases/tag/v3.21.0 (`packages/cli/src/commands/generate.ts`, `open.ts`)
+- https://allurereport.org/docs/v2/install-for-macos/, https://github.com/allure-framework/allure2/releases/tag/2.46.1
+- https://github.com/eclipse-aspectj/aspectj/releases/tag/V1_9_25_1, `docs/release/README-1.9.25.adoc`
+- https://github.com/allure-framework/allure-gradle/releases/tag/4.3.0
+- Maven Central: `maven-metadata.xml` и POM артефактов 3.0.0; `npm view allure`
+
+### Изменения
+
+- `build.gradle`: `testImplementation platform("io.qameta.allure:allure-bom:3.0.0")`, `io.qameta.allure:allure-jupiter`, `io.qameta.allure:allure-selenide`; конфигурация `agent` (`canBeResolved = true`, `canBeConsumed = false`) с `org.aspectj:aspectjweaver:1.9.25.1`; в `test` — `jvmArgs "-javaagent:${configurations.agent.singleFile}"` и `doFirst { delete layout.buildDirectory.dir("allure-results") }`. Версии Java, JUnit, Selenide и передача свойств `selenide.*` не менялись.
+- `src/test/resources/allure.properties` (новый): `allure.results.directory=build/allure-results`.
+- `src/test/java/tests/TestBase.java`: метод `@BeforeAll static void addAllureListener()` — `SelenideLogger.addListener("AllureSelenide", new AllureSelenide().screenshots(true).savePageSource(true).includeSelenideSteps(true))`.
+- `src/test/java/pages/SearchPage.java`: `@Step` на 7 публичных методах — `Open search page`, `Search for "{query}"`, `Check that results contain text "{text}"`, `Check that all results are from repository "{repository}"`, `Check that no matching repositories message is shown`, `Check that repositories count is "{count}"`, `Check that results list is absent`. Сигнатуры и тела методов не менялись.
+- `package.json`, `package-lock.json` (новые): `npm install --save-dev --save-exact allure@3.21.0` → `devDependencies.allure = "3.21.0"`, lockfileVersion 3, 158 пакетов.
+- `.gitignore`: `node_modules/`.
+
+### Проверки
+
+Все запуски выполнены из корня репозитория, `JAVA_HOME` не задан, npm и Node — из `/opt/homebrew/bin` (Node 26.9.0, npm 11.19.1).
+
+- `npx allure --version` → `3.21.0`. `npx allure generate --help`: есть `--output,-o`, `--clean` («Remove the output directory before generating the report»), `--open`, `--port`, `--host`. `npx allure open --help`: путь к отчёту или к результатам, `--port`, `--host`. По умолчанию сервер слушает все сетевые интерфейсы, поэтому локально используется `--host 127.0.0.1`.
+- `./gradlew compileTestJava`: успешно. `./gradlew dependencies` и `dependencyInsight --configuration testRuntimeClasspath`: `allure-jupiter`, `allure-selenide`, `allure-java-commons`, `allure-junit-platform` — 3.0.0; транзитивные `junit-jupiter-api` и `junit-platform-launcher` 6.1.0 разрешаются в 6.1.3; Selenide 7.18.2.
+- `./gradlew test --rerun-tasks --console=plain` (defaults, headed): BUILD SUCCESSFUL in 16s, exit code 0, `tests="3" skipped="0" failures="0" errors="0"` (5.5 / 4.4 / 5.0 с). В `build/allure-results` 3 файла `*-result.json` (по одному на тест) и 4 `*-container.json`. В каждом результате есть дерево шагов: пользовательские шаги `@Step` с параметрами (`query`, `text`, `repository`, `count`) и вложенные шаги Selenide (`$("open") https://github.com/search` → `$("webdriver") create()`, `set value`, `press enter`, `should have(...)`). Последний шаг на уровне теста — `$("webdriver") close()` из `@AfterEach`.
+- `npx allure generate build/allure-results --output build/allure-report --clean`: exit code 0, Awesome-отчёт в `build/allure-report`; каталог `allure-report/` в корне репозитория не создан.
+- Контролируемое падение: в `successfulSearchTest` ожидаемый текст временно заменён на `QA.GURU-PHASE4-CONTROLLED-FAIL`. `./gradlew test --rerun-tasks --console=plain`: `SearchTests > successfulSearchTest() FAILED`, `com.codeborne.selenide.ex.ElementShould at SearchTests.java:13`, BUILD FAILED in 32s, exit code 1, `tests="3" failures="1"`.
+  - В результате Allure тест `failed`, сообщение `Element should have text "QA.GURU-PHASE4-CONTROLLED-FAIL" {[data-testid='results-list']}`, trace на 179 строк (`SearchPage.shouldHaveResultsWithText(SearchPage.java:27)`, `SearchTests.successfulSearchTest(SearchTests.java:13)`).
+  - Шаг `Check that results contain text "QA.GURU-PHASE4-CONTROLLED-FAIL"` — `failed`; вложенный шаг Selenide `should have(text ...)` — `failed`, с вложениями `Screenshot` (image/png, 358 КБ) и `Page source` (text/html, 249 КБ).
+  - Причина падения — assertion: на скриншоте обычная выдача (`10.5k results`, `qa-guru/niffler`…); `429` в page source встречается только в хеше JS-файла и SVG-путях, «Too many requests» нет.
+  - После прогона `pgrep chromedriver` пуст, браузерных процессов нет.
+- Отчёт с падением сгенерирован в scratchpad (вне репозитория) и открыт командой `npx allure open <dir> --host 127.0.0.1 --port 47801` (HTTP 200). Снимки headless Chrome: на главной странице Total 3, Failed 1, Passed 2; на странице `successfulSearchTest()` — статус Failed, блок Error с сообщением assertion, вкладка Attachments 2. Отчёт передан пользователю для визуальной приёмки; её результат в плане не зафиксирован.
+- Assertion восстановлен: `git diff` `SearchTests.java` пуст.
+- `./gradlew test -Dselenide.headless=true --rerun-tasks --console=plain`: BUILD SUCCESSFUL in 17s, exit code 0, 3/3 (6.4 / 4.9 / 5.0 с). В `build/allure-results` ровно 3 результата: результаты прошлого прогона удалены `doFirst`.
+- Финальный запуск `./gradlew test --rerun-tasks --console=plain`: BUILD SUCCESSFUL in 20s, exit code 0, 3/3 (6.4 / 5.3 / 8.0 с), 3 результата, 0 вложений. `npx allure generate … --clean` — exit code 0, в отчёте 3 теста. Отчёт открыт командой `npx allure open build/allure-report --host 127.0.0.1 --port 47802` (HTTP 200). `pgrep chromedriver` пуст.
+- Других падений, кроме контролируемого, не было; медленная сеть из фазы 3 в этих прогонах не проявилась.
+- Временная диагностика в `src` не создавалась, кроме временной замены assertion. `grep` по `src` на `PHASE4|CONTROLLED|diag|probe|System.out|sleep|@Disabled|RepeatedTest|executeJavaScript` ничего не находит. `git check-ignore`: `node_modules`, `build/allure-results` и `build/allure-report` игнорируются.
+
+### Ограничения и непроверенное
+
+- Совместимость версий: `allure-jupiter` 3.0.0 проверен разработчиками на JUnit 6.1.0, `allure-selenide` — на Selenide 7.17.0 и 7.18.1. С JUnit 6.1.3 и Selenide 7.18.2 совместимость подтверждена только прогонами этой фазы.
+- Allure Report 3.21.0 вышел за 4 дня до фазы. Минимальная версия Node.js пакетом не заявлена; проверена только Node 26.9.0.
+- Вложения создаёт `AllureSelenide` только при падении события Selenide. Падение вне Selenide (например, исключение в коде теста) не даст скриншота и page source.
+- `doFirst` очищает результаты при каждом запуске `test`, поэтому после запуска с `--tests` в отчёте будут только выбранные тесты. История отчёта (`historyPath`) не настраивалась.
+- `allure.results.directory` задан относительным путём: при запуске из IDE с другим рабочим каталогом результаты окажутся в другом месте. Не проверялось.
+- `npx allure open` блокирует терминал до Ctrl+C и по умолчанию слушает все интерфейсы.
+- `jvmArgs` с `configurations.agent.singleFile` разрешает конфигурацию `agent` на этапе конфигурации Gradle; configuration cache не проверялся.
+- В stderr тестов осталось только предупреждение Selenium о CDP 155/153. Предупреждение SLF4J о NOP logger из прошлых фаз в stderr больше не появлялось; причина не исследовалась.
+- Для Jenkins (фаза 7) на агенте понадобится Node.js; Allure Jenkins plugin использует Report 2. Это решается в фазе 7.
+- Не проверялись: запуск из IDE, чистый checkout с `npm ci`, `-Dselenide.browserSize=1920x1080`, Classic-отчёт Allure 3, Windows.
 
 ## Фаза 5 — GitHub Actions
 
@@ -393,12 +460,16 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 
 ## Базовые команды проверки
 
-Команды выполняются из корня Git-репозитория. `./gradlew` появляется в фазе 1; команды Allure добавить после согласования генератора в фазе 4. Успешный запуск не гарантирует доступность внешнего сайта при следующем запуске.
+Команды выполняются из корня Git-репозитория. `./gradlew` появляется в фазе 1, команды Allure — в фазе 4 (нужен Node.js; `npm ci` ставит закреплённую версию из `package-lock.json`). Успешный запуск не гарантирует доступность внешнего сайта при следующем запуске.
 
 ```bash
 ./gradlew --version
 ./gradlew test --rerun-tasks --console=plain
 ./gradlew test -Dselenide.headless=true -Dselenide.browserSize=1920x1080 --rerun-tasks --console=plain
+npm ci
+npx allure --version
+npx allure generate build/allure-results --output build/allure-report --clean
+npx allure open build/allure-report --host 127.0.0.1
 git diff --check
 ```
 
