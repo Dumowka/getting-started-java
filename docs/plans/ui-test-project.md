@@ -19,6 +19,10 @@
 - Allure (фаза 4, согласовано 2026-10-20): генератор — Allure Report 3 (npm-пакет `allure` 3.21.0) как devDependency проекта с точной версией и `package-lock.json`, `node_modules/` в `.gitignore`; запуск через `npx allure`. JVM-адаптеры — Allure Java 3.0.0 через `allure-bom`: `allure-jupiter` и `allure-selenide`. AspectJ weaver 1.9.25.1 как `-javaagent` задачи `test`.
 - Шаги Allure: `@Step` с английскими названиями и параметрами только на публичных методах `SearchPage`; технические шаги Selenide — через `AllureSelenide` (`includeSelenideSteps(true)`), при падении — вложения Screenshot и Page source; listener регистрируется в `@BeforeAll` в `TestBase`.
 - Результаты Allure — `build/allure-results` (задаётся в `src/test/resources/allure.properties`), очищаются в `doFirst` задачи `test`; отчёт — `build/allure-report`, генерируется с `--clean`.
+- GitHub Actions (фаза 5, согласовано 2026-10-20): один workflow `.github/workflows/ui-tests.yml`. Триггеры — `workflow_dispatch` и `push` во все ветки с `paths-ignore` `docs/**` и `**/*.md`; без `pull_request` и `schedule` (риск HTTP 429 от github.com). Runner `ubuntu-24.04`, Chrome и ChromeDriver — предустановленные в образе; Chrome for Testing не ставится, `--no-sandbox` не используется.
+- В CI передаются только `-Dselenide.headless=true` и `-Dselenide.browserSize` из input `browser_size` (`choice`: `1366x768` по умолчанию, `1920x1080`), через `env` с проверкой `case`; `baseUrl` и `browser` — defaults TestBase.
+- В CI: Temurin `21` (`actions/setup-java`), Gradle через wrapper с `setup-gradle` (`cache-provider: basic`, проверка wrapper), Node.js 24.22.0 с `npm ci` и кэшем npm. Actions закреплены по полному SHA с тегом в комментарии; `permissions: {}` на уровне workflow, минимальные — на уровне job; secrets не нужны.
+- Артефакты (14 дней): `allure-results`, `test-reports` (JUnit XML и HTML-отчёт Gradle), `allure-report`. Отчёт генерируется только при наличии `build/allure-results/*-result.json`. Публикация Allure-отчёта в GitHub Pages — только с `master` (в том числе при упавших тестах); Pages включается после слияния.
 
 ## Текущее состояние
 
@@ -26,10 +30,11 @@
 - Фаза 1 реализована 2026-10-20 в ветке `phase-1` (один коммит; PR #2 влит в `master`): Gradle Wrapper 9.8.2, Java 21 toolchain, TestBase, передача четырёх свойств `selenide.*`; финальные запуски 1/1 с defaults и с переопределением. Детали — в разделе фазы 1.
 - Фаза 2 реализована 2026-10-20 в ветке `phase-2` (коммит фазы и коммит с обновлением плана; по решению пользователя запушена в `origin`; PR #3 влит в `master`): в SearchTests добавлены `repoQualifierSearchTest` и `searchWithoutResultsTest`; весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 2.
 - Фаза 3 реализована 2026-10-20 в ветке `phase-3` (коммит фазы и коммит с расследованием длительности тестов; ветка запушена в `origin`; PR #4 влит в `master`): тесты и TestBase перенесены в пакет `tests`, Page Object (`BasePage`, `SearchPage`, три компонента) — в пакете `pages`; каждый тест отдельно 1/1, весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 3.
-- Фаза 4 реализована 2026-10-20 в ветке `phase-4` (один коммит; не запушена): Allure Report 3.21.0 (npm), Allure Java 3.0.0 (`allure-jupiter`, `allure-selenide`), AspectJ 1.9.25.1, `@Step` на `SearchPage`, вложения при падении; весь набор 3/3 с defaults и в headless, контролируемое падение проверено. Детали — в разделе фазы 4.
-- Фазы 5–9 не реализованы: CI нет.
+- Фаза 4 реализована 2026-10-20 в ветке `phase-4` (один коммит; ветка запушена в `origin`; PR #5 влит в `master`): Allure Report 3.21.0 (npm), Allure Java 3.0.0 (`allure-jupiter`, `allure-selenide`), AspectJ 1.9.25.1, `@Step` на `SearchPage`, вложения при падении; весь набор 3/3 с defaults и в headless, контролируемое падение проверено. Детали — в разделе фазы 4.
+- Фаза 5 реализована 2026-10-20 в ветке `phase-5` (запушена в `origin`, в `master` не влита): workflow GitHub Actions `ui-tests.yml`; в реальном GitHub Actions проверены успешный запуск 3/3, контролируемое падение assertion, ошибка компиляции и отсутствие результатов Allure. Ручной запуск с inputs и публикация в Pages не проверены (возможны только после слияния). Детали — в разделе фазы 5.
+- Фазы 6–9 не реализованы.
 
-Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 5, после подтверждения пользователя.
+Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 6, после подтверждения пользователя.
 
 ## Фаза 0 — Baseline
 
@@ -297,7 +302,7 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 
 ## Фаза 4 — Allure Report 3
 
-Статус: реализована 2026-10-20 в ветке `phase-4`, созданной от `master` после fast-forward до `382986a` (merge PR #4, фаза 3). Один коммит, push не выполнялся. Решения этапа A подтверждены пользователем 2026-10-20 (все предложенные варианты). Фаза 5 ожидает подтверждения пользователя.
+Статус: реализована 2026-10-20 в ветке `phase-4`, созданной от `master` после fast-forward до `382986a` (merge PR #4, фаза 3). Один коммит. Ветка запушена в `origin/phase-4`, PR #5 влит в `master`. Решения этапа A подтверждены пользователем 2026-10-20 (все предложенные варианты). Фаза 5 ожидает подтверждения пользователя.
 
 Объём фазы:
 
@@ -380,25 +385,97 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 
 ## Фаза 5 — GitHub Actions
 
-Статус: не реализована.
+Статус: реализована 2026-10-20 в ветке `phase-5`, созданной от `master` после fast-forward до `04b8880` (merge PR #5, фаза 4). Коммит с workflow и коммит с обновлением плана. По решению пользователя ветка запушена в `origin/phase-5`, в `master` не влита. Решения этапа A подтверждены пользователем 2026-10-20 (все предложенные варианты). Временные ветки проверок ожидают подтверждения удаления. Фаза 6 ожидает подтверждения пользователя.
 
-### Перед реализацией согласовать
+Объём фазы:
 
-- События запуска workflow.
-- Публикацию отчёта: артефакты, GitHub Pages, условия публикации.
-- Inputs workflow и их валидацию.
-- Установку браузера и драйвера в CI и их версии.
-- Репозиторий для реального запуска CI.
-- Нужны ли secrets.
+- Этап A: согласовать события запуска, публикацию отчёта, inputs, браузер и драйвер, Node.js и Allure, версии actions, permissions и secrets, внешние действия и способ локальной проверки.
+- Этап B: добавить workflow, проверить его локально (actionlint) и в реальном GitHub Actions: успешный запуск, контролируемое падение assertion, ошибку компиляции, отсутствие результатов; удалить временные изменения, обновить план, закоммитить.
 
-### Реализация и проверка
+### Решения этапа A
 
-- Добавить workflow с явной передачей `selenide.headless=true`.
-- Закрепить версии actions и инструментов; задать минимальные permissions.
-- Компилировать тесты отдельно от запуска; сохранять результаты и отчёт при падении тестов; не маскировать exit code тестов.
-- Проверить workflow локально (например, actionlint).
-- Проверить в реальном GitHub Actions: успешный запуск, контролируемое падение assertion, ошибку компиляции и отсутствие результатов.
-- Удалить временные ветки и диагностику, создать коммит.
+Репозиторий для CI — `origin` (https://github.com/Dumowka/getting-started-java): публичный, default branch `master`. На 2026-10-20 Actions включены (`allowed_actions: all`), `default_workflow_permissions: read`, Pages не включён, environments и workflows не было.
+
+- События: `workflow_dispatch` и `push` во все ветки (`branches: ['**']`, теги не запускают) с `paths-ignore` `docs/**`, `**/*.md`. `pull_request` не добавлен: для одного коммита он дал бы второй прогон к push и лишние запросы к github.com (риск HTTP 429). `schedule` не добавлен: работает только на default branch, в публичном репозитории отключается после 60 дней без активности, регулярные анонимные поиски повышают риск 429.
+- `workflow_dispatch` до слияния: «To trigger the `workflow_dispatch` event, your workflow must be in the default branch». Поэтому до слияния workflow проверяется через push в ветки (push работает и для workflow, «not merged into the default branch»); `gh workflow run` не использовался.
+- Отчёт: три артефакта с `retention-days: 14` (по умолчанию 90, допустимо 1–90): `allure-results` (`if-no-files-found: warn`), `test-reports` — `build/test-results/test` и `build/reports/tests/test` (`error`), `allure-report` (`error`). Загрузка результатов — если шаг тестов выполнился (успех или падение). GitHub Pages: job `deploy-pages` с environment `github-pages` только для `refs/heads/master`, если отчёт сгенерирован и загружен (в том числе при упавших тестах). Сайт будет публичным (https://dumowka.github.io/getting-started-java/), отчёт перезаписывается, истории нет. В настройках нужно включить Pages с Source = GitHub Actions; `configure-pages` с `enablement` не подходит — нужен токен, отличный от `GITHUB_TOKEN`. По решению пользователя включение Pages отложено до слияния.
+- Inputs: один `browser_size` (`choice`: `1366x768` по умолчанию, `1920x1080`). Значение передаётся через `env` job (`${{ inputs.browser_size || '1366x768' }}` — при push input пустой) и проверяется `case` первым шагом; при ошибке — `::error::` без вывода значения и `exit 1`. `headless` всегда `true`; `browser` и `baseUrl` не передаются.
+- Браузер: предустановленные в образе `ubuntu-24.04` Google Chrome (`.deb`, `/opt/google/chrome`) и ChromeDriver той же сборки (`/usr/local/share/chromedriver-linux64`, симлинк в `/usr/bin`, скрипт `install-google-chrome.sh` образа). Версию на GitHub-hosted runner закрепить нельзя (образ обновляется еженедельно), поэтому версии печатаются в каждом запуске. Chrome for Testing (`browser-actions/setup-chrome`) отклонён: потребовал бы передать пути к браузеру и драйверу (дополнительные свойства), а на Ubuntu 24.04 непривилегированные user namespaces ограничены AppArmor (runner-images #10443), и профиль `chrome` из пакета `apparmor` разрешает их только для `/opt/google/chrome/chrome` — Chrome в другом каталоге, вероятно, не запустит sandbox. Selenium 4.49.0 поддерживает CDP v151–v153 (каталоги `devtools` в теге `selenium-4.49.0`).
+- Node.js 24.22.0 (Active LTS «Krypton», 2026-10-14; зависимости Allure требуют максимум `>= 20.19.0`), `npm ci`, `cache: npm`. Проверка результатов перед генерацией обязательна: локально `npx allure generate` на пустом каталоге создаёт отчёт с нулём тестов и exit code 0, на отсутствующем — `No test results directories found…`, exit code 1.
+- Java: `actions/setup-java`, `temurin`, `java-version: '21'` (мажор, как в toolchain; patch — в логе). Gradle: `setup-gradle` с `cache-provider: basic` (MIT, поверх `actions/cache`) вместо проприетарного Enhanced Caching по умолчанию; wrapper проверяется автоматически.
+- Runner `ubuntu-24.04` (GA, на него указывает `ubuntu-latest`). `timeout-minutes`: 20 для `test`, 10 для `deploy-pages` (по умолчанию 360; деплой Pages сам прерывается через 10 минут). `concurrency`: workflow — `${{ github.workflow }}-${{ github.ref }}`, `cancel-in-progress` везде, кроме `master`; job деплоя — группа `pages`, `cancel-in-progress: false`.
+- Permissions: `permissions: {}` на уровне workflow; `test` — `contents: read` (`checkout` с `persist-credentials: false`); `deploy-pages` — `pages: write`, `id-token: write`. Secrets не нужны.
+- Внешние действия, разрешённые пользователем: push `phase-5` и трёх временных веток; удаление временных веток — после отдельного подтверждения. Включение Pages отложено. `gh auth refresh -s workflow` не понадобился: push файла workflow приняли учётные данные git из keychain (у токена `gh` scopes `gist, read:org, repo`).
+- Локальная проверка: actionlint 1.7.12 из GitHub Releases в scratchpad вне проекта, с проверкой sha256.
+
+Actions (теги — `latest` на 2026-10-20; SHA сверены через REST API с разыменованием annotated-тегов и через `git ls-remote …^{}`):
+
+| Action | Тег | SHA |
+|---|---|---|
+| actions/checkout | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
+| actions/setup-java | v6.1.0 | `b843ebf9b913146b38da2eaa7aeddf76074ae1ad` |
+| gradle/actions/setup-gradle | v6.4.0 | `3f5f9adaf7d9fecd50b5935e54106014257a94e6` |
+| actions/setup-node | v7.1.0 | `949feb2413d6458794dcd2491c4babbbce0c15c1` |
+| actions/upload-artifact | v7.0.2 | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` |
+| actions/upload-pages-artifact | v5.0.0 | `fc324d3547104276b827a68afc52ff2a11cc49c9` |
+| actions/deploy-pages | v5.0.1 | `368f82528645a54fb793d4d04e342629a3f51346` |
+
+`upload-pages-artifact` v5.0.0 внутри использует `actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f` (v7.0.0).
+
+Источники:
+
+- https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+- https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow
+- https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax (inputs: до 25, 65 535 символов; `timeout-minutes` по умолчанию 360; permissions; concurrency)
+- https://docs.github.com/en/actions/reference/security/secure-use (промежуточная переменная `env` для недоверенного ввода, pin по полному SHA)
+- https://docs.github.com/en/actions/reference/limits (job на GitHub-hosted runner — до 6 часов)
+- https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages, …/configuring-a-publishing-source-for-your-github-pages-site, …/github-pages-limits
+- https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
+- README и `action.yml` перечисленных actions в указанных тегах; `docs/setup-gradle.md` в `gradle/actions` v6.4.0
+- https://github.com/actions/runner-images: README, `images/ubuntu/Ubuntu2404-Readme.md`, `images/ubuntu/scripts/build/install-google-chrome.sh`, issue #10443
+- профиль `profiles/apparmor.d/chrome` пакета `apparmor` (Launchpad, `ubuntu/noble`)
+- https://github.com/SeleniumHQ/selenium/tree/selenium-4.49.0/java/src/org/openqa/selenium/devtools
+- https://nodejs.org/dist/index.json
+- https://github.com/rhysd/actionlint/releases/tag/v1.7.12
+
+### Изменения
+
+- `.github/workflows/ui-tests.yml` (новый): job `test` — проверка input, checkout, Java, Gradle, Node.js, `npm ci`, вывод версий (`google-chrome`, `chromedriver`, `java`, `node`, `npx allure`, `./gradlew --version`), `./gradlew testClasses --console=plain`, `./gradlew test -Dselenide.headless=true "-Dselenide.browserSize=$BROWSER_SIZE" --console=plain`, загрузка `allure-results` и `test-reports`, проверка `compgen -G 'build/allure-results/*-result.json'`, `npx allure generate build/allure-results --output build/allure-report --clean`, загрузка `allure-report`, на `master` — `upload-pages-artifact`. Job `deploy-pages` — `deploy-pages` на `master`. Шаги после тестов выполняются по `!cancelled()` и исходу предыдущих шагов, без `continue-on-error` и `|| true`; `defaults.run.shell: bash` (`-eo pipefail`). Комментарии — только теги рядом с SHA.
+- Код тестов, Page Object, `build.gradle`, версии зависимостей, `package.json` и `allure.properties` не менялись.
+
+### Проверки
+
+Локально:
+
+- actionlint 1.7.12 (`actionlint_1.7.12_darwin_arm64.tar.gz`): sha256 архива `aba9ced2…6953f` и `actionlint_1.7.12_checksums.txt` `433028cf…a4f5` совпали с digest в API релиза; `shasum -a 256 -c` по `checksums.txt` — OK. `actionlint -verbose .github/workflows/ui-tests.yml`: 0 ошибок, exit code 0. Правила `shellcheck` и `pyflakes` отключены — этих программ нет локально.
+- Скрипты шагов в `bash -eo pipefail`: проверка результатов — каталог только с `*-container.json` → exit 1, каталога нет → exit 1, есть `*-result.json` → exit 0; проверка input — `1366x768`, `1920x1080` → 0; пустое значение, `1366x768; id`, значение с переводом строки → exit 1.
+
+В GitHub Actions (все запуски — `push`, runner `ubuntu-24.04`, образ 20261018.339.1; Chrome и ChromeDriver 155.0.8059.84, Temurin 21.0.12.1+1, Node.js 24.22.0, Allure 3.21.0, Gradle 9.8.2; `setup-gradle` подтвердил checksum wrapper `3b8a2577…8e98`). Запуски шли по очереди, следующий — после завершения предыдущего:
+
+| Run id | Ветка | Коммит | Итог |
+|---|---|---|---|
+| 39396282438 | `phase-5` | коммит фазы с workflow | success, 56 с |
+| 39396528519 | `phase-5-ci-assert-fail` | временный: ожидаемый текст `QA.GURU-PHASE5-CONTROLLED-FAIL` | failure, 77 с |
+| 39396821847 | `phase-5-ci-compile-error` | временный: удалена `;` в `SearchTests.java:13` | failure, 48 с |
+| 39396981175 | `phase-5-ci-no-results` | временный: `allure.results.directory=build/allure-results-phase5-redirected` | failure, 62 с |
+
+- 39396282438: все шаги success, `Upload Pages artifact` и job `deploy-pages` — skipped (не `master`). `Run tests`: BUILD SUCCESSFUL in 12s. Артефакты: `allure-results` (3 `*-result.json`, 4 `*-container.json`), `test-reports` (`tests="3" skipped="0" failures="0" errors="0"`; 3.7 / 1.6 / 1.3 с), `allure-report`. В stderr тестов — только предупреждение CDP: версия 155, ближайшая поддерживаемая — 153.
+- 39396528519: `Run tests` — failure: `SearchTests > successfulSearchTest() FAILED`, `com.codeborne.selenide.ex.ElementShould at SearchTests.java:13`, `3 tests completed, 1 failed`, BUILD FAILED, `Process completed with exit code 1`. Загрузки, проверка результатов и генерация — success; job — failure. Артефакты: `allure-results` с 2 вложениями (PNG 149 КБ, HTML 249 КБ), `test-reports` (`failures="1"`), `allure-report`. На скриншоте — обычная выдача (`10.5k results`), признаков HTTP 429 нет: падение контролируемое.
+- 39396821847: `Compile tests` — failure (`SearchTests.java:13: error: ';' expected`, BUILD FAILED, exit code 1); `Run tests`, все загрузки, проверка и генерация — skipped; артефактов 0.
+- 39396981175: `Compile tests`, `Run tests` (BUILD SUCCESSFUL in 16s) — success; `Upload Allure results` — `##[warning]No files were found with the provided path: build/allure-results. No artifacts will be uploaded.`; `Upload test reports` — success; `Check Allure results` — `##[error]No Allure results found in build/allure-results`, exit code 1; генерация и загрузка отчёта — skipped. Артефакт только `test-reports`; отчёт не создан.
+- Неожиданных падений, ошибок окружения (запуск Chrome, Pages) и HTTP 429 не было.
+- Временные изменения были только во временных ветках; ветка `phase-5` их не содержит. Временные ветки (локально и в `origin`) ожидают подтверждения удаления.
+
+### Ограничения и непроверенное
+
+- Не проверены, потому что требуют workflow в `master`: ручной запуск `workflow_dispatch`, input `browser_size` через UI или `gh workflow run` (включая `1920x1080` в CI), запуск на `master` с загрузкой `upload-pages-artifact`, job `deploy-pages`, передача output `pages-artifact` при упавшем job `test`, environment `github-pages` и его правила. Pages ещё не включён; без этого деплой на `master` упадёт.
+- `concurrency` (отмена прогона при новом push в ту же ветку, очередь на `master`) не проверялась: запуски шли по одному.
+- Версии Chrome и ChromeDriver определяются образом runner и меняются с его обновлением (README образа на момент этапа A показывал 155.0.8059.39, в запусках — 155.0.8059.84). Selenium 4.49.0 выдаёт предупреждение CDP 155/153; на тесты не влияло.
+- Кэш Gradle (`basic`) на ветках работает только на чтение: по умолчанию пишется только с default branch, поэтому во всех запусках фазы кэша не было (`0 restored, 0 saved`). Кэш npm сохранён в запуске `phase-5`.
+- В CI тесты шли 1.3–3.7 с и без HTTP 429, но анонимный поиск github.com с IP датацентра может получить 429 или замедлиться; однократные запуски стабильности не гарантируют.
+- Run-скрипты не проверены shellcheck (его нет локально).
+- Без проверки результатов при пустом каталоге Allure 3.21.0 создал бы отчёт с нулём тестов (проверено локально); в CI проверялся только случай отсутствующего каталога, пустой — локально.
+- Проверка input работает и при push (fallback `1366x768`); ветка `case` с ошибкой в CI не запускалась.
 
 ## Фаза 6 — Telegram
 
