@@ -23,6 +23,9 @@
 - В CI передаются только `-Dselenide.headless=true` и `-Dselenide.browserSize` из input `browser_size` (`choice`: `1366x768` по умолчанию, `1920x1080`), через `env` с проверкой `case`; `baseUrl` и `browser` — defaults TestBase.
 - В CI: Temurin `21` (`actions/setup-java`), Gradle через wrapper с `setup-gradle` (`cache-provider: basic`, проверка wrapper), Node.js 24.22.0 с `npm ci` и кэшем npm. Actions закреплены по полному SHA с тегом в комментарии; `permissions: {}` на уровне workflow, минимальные — на уровне job; secrets не нужны.
 - Артефакты (14 дней): `allure-results`, `test-reports` (JUnit XML и HTML-отчёт Gradle), `allure-report`. Отчёт генерируется только при наличии `build/allure-results/*-result.json`. Публикация Allure-отчёта в GitHub Pages — только с `master` (в том числе при упавших тестах); Pages включён с Source = GitHub Actions, environment `github-pages` разрешает деплой только из `master`.
+- Telegram (фаза 6, согласовано 2026-10-20): в GitHub Actions — отдельный job `notify` (`needs: [test, deploy-pages]`), только для push в `master` и `workflow_dispatch` на любой ветке, по условию `!cancelled()`: при отмене workflow сообщения нет. Repository secrets `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID` передаются только в `env` шага отправки. Без секретов — `::warning::` и exit 0, итог workflow определяют тесты. Ошибка Telegram API — `::error::` и падение job `notify` без ретраев; job `test` и его итог не меняются.
+- Скрипт `scripts/telegram_notify.py` (Python 3 stdlib, без зависимостей), данные — через переменные `NOTIFY_*`, чтобы переиспользовать его в Jenkins. Статистика — по элементам `<testcase>` в `TEST-*.xml` из артефакта `test-reports`, со сверкой с атрибутами `<testsuite>`; исход — по `outcome` шагов `Compile tests` и `Run tests` и `needs.test.result`. Сообщение — plain text без `parse_mode`, превью ссылок отключено; ссылка на Pages — только если `deploy-pages` этого запуска успешен.
+- Jenkins: Telegram-уведомления нужны; реализуются в фазе 7 тем же скриптом, имена Jenkins Credentials и правила веток согласуются там.
 
 ## Текущее состояние
 
@@ -31,10 +34,11 @@
 - Фаза 2 реализована 2026-10-20 в ветке `phase-2` (коммит фазы и коммит с обновлением плана; по решению пользователя запушена в `origin`; PR #3 влит в `master`): в SearchTests добавлены `repoQualifierSearchTest` и `searchWithoutResultsTest`; весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 2.
 - Фаза 3 реализована 2026-10-20 в ветке `phase-3` (коммит фазы и коммит с расследованием длительности тестов; ветка запушена в `origin`; PR #4 влит в `master`): тесты и TestBase перенесены в пакет `tests`, Page Object (`BasePage`, `SearchPage`, три компонента) — в пакете `pages`; каждый тест отдельно 1/1, весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 3.
 - Фаза 4 реализована 2026-10-20 в ветке `phase-4` (один коммит; ветка запушена в `origin`; PR #5 влит в `master`): Allure Report 3.21.0 (npm), Allure Java 3.0.0 (`allure-jupiter`, `allure-selenide`), AspectJ 1.9.25.1, `@Step` на `SearchPage`, вложения при падении; весь набор 3/3 с defaults и в headless, контролируемое падение проверено. Детали — в разделе фазы 4.
-- Фаза 5 реализована 2026-10-20 в ветке `phase-5` (запушена в `origin`, в `master` не влита): workflow GitHub Actions `ui-tests.yml`; в реальном GitHub Actions проверены успешный запуск 3/3, контролируемое падение assertion, ошибка компиляции и отсутствие результатов Allure. Ручной запуск с inputs и публикация в Pages не проверены (возможны только после слияния). Детали — в разделе фазы 5.
-- Фазы 6–9 не реализованы.
+- Фаза 5 реализована 2026-10-20 в ветке `phase-5` (запушена в `origin`; PR #6 влит в `master`): workflow GitHub Actions `ui-tests.yml`; в реальном GitHub Actions проверены успешный запуск 3/3, контролируемое падение assertion, ошибка компиляции и отсутствие результатов Allure. Ручной запуск с inputs и публикация в Pages не проверены (возможны только после слияния). Детали — в разделе фазы 5.
+- Фаза 6 реализована 2026-10-20 в ветке `phase-6` (запушена в `origin`, в `master` не влита): job `notify` и скрипт `scripts/telegram_notify.py`; в реальном GitHub Actions проверены пропуск без секретов и отправки для успеха, падения assertion, ошибки компиляции, а также ошибка Telegram API. Временные ветки проверок ещё не удалены (ждут подтверждения пользователя). Детали — в разделе фазы 6.
+- Фазы 7–9 не реализованы.
 
-Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 6, после подтверждения пользователя.
+Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 7, после подтверждения пользователя.
 
 ## Фаза 0 — Baseline
 
@@ -385,7 +389,7 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 
 ## Фаза 5 — GitHub Actions
 
-Статус: реализована 2026-10-20 в ветке `phase-5`, созданной от `master` после fast-forward до `04b8880` (merge PR #5, фаза 4). Коммит с workflow и коммит с обновлением плана. По решению пользователя ветка запушена в `origin/phase-5`, в `master` не влита. Решения этапа A подтверждены пользователем 2026-10-20 (все предложенные варианты). По решению пользователя временные ветки проверок удалены локально и в `origin`, GitHub Pages включён. Фаза 6 ожидает подтверждения пользователя.
+Статус: реализована 2026-10-20 в ветке `phase-5`, созданной от `master` после fast-forward до `04b8880` (merge PR #5, фаза 4). Коммит с workflow и коммит с обновлением плана. По решению пользователя ветка запушена в `origin/phase-5`; PR #6 влит в `master`. Решения этапа A подтверждены пользователем 2026-10-20 (все предложенные варианты). По решению пользователя временные ветки проверок удалены локально и в `origin`, GitHub Pages включён. Фаза 6 ожидает подтверждения пользователя.
 
 Объём фазы:
 
@@ -481,22 +485,94 @@ Actions (теги — `latest` на 2026-10-20; SHA сверены через RE
 
 ## Фаза 6 — Telegram
 
-Статус: не реализована. Реализация начинается после согласования пунктов ниже; реальная отправка — только с разрешения пользователя. Все пункты остаются открытыми до подтверждённых результатов.
+Статус: реализована 2026-10-20 в ветке `phase-6`, созданной от `master` после fast-forward до merge PR #6 (фаза 5). Коммит с job `notify` и скриптом и коммит с обновлением плана. Ветка запушена в `origin/phase-6`, в `master` не влита. Решения этапа A подтверждены пользователем 2026-10-20 (все предложенные варианты, включая внешние действия). Secrets созданы пользователем. Три временные ветки проверок запушены и пока не удалены: удаление — после отдельного подтверждения пользователя. Фаза 7 ожидает подтверждения пользователя.
 
 ### Перед реализацией согласовать
 
-- [ ] Нужны ли уведомления из GitHub Actions и Jenkins и для каких исходов.
-- [ ] Имена secrets/credentials, поведение при отсутствии секретов и ошибке Telegram.
-- [ ] Разрешение на реальную отправку сообщения.
+- [x] Нужны ли уведомления из GitHub Actions и Jenkins и для каких исходов.
+- [x] Имена secrets/credentials, поведение при отсутствии секретов и ошибке Telegram.
+- [x] Разрешение на реальную отправку сообщения.
 
 ### Реализация и проверка
 
-- [ ] Использовать secrets окружения без хардкода и логирования.
-- [ ] Брать passed/failed/skipped из проверенного формата JUnit XML; не опираться на непроверенные внутренние файлы Allure-отчёта.
-- [ ] Отличать сбой сборки до запуска тестов от успешного запуска с нулём тестов.
-- [ ] Включить проект, CI, branch/commit, статус тестов, статистику и ссылку на запуск.
-- [ ] Проверять HTTP-ответ и результат Telegram API; не маскировать исходное падение ошибкой уведомления.
-- [ ] Проверить согласованные случаи без реальной отправки, затем выполнить разрешённую отправку; создать коммит.
+- [x] Использовать secrets окружения без хардкода и логирования.
+- [x] Брать passed/failed/skipped из проверенного формата JUnit XML; не опираться на непроверенные внутренние файлы Allure-отчёта.
+- [x] Отличать сбой сборки до запуска тестов от успешного запуска с нулём тестов.
+- [x] Включить проект, CI, branch/commit, статус тестов, статистику и ссылку на запуск.
+- [x] Проверять HTTP-ответ и результат Telegram API; не маскировать исходное падение ошибкой уведомления.
+- [x] Проверить согласованные случаи без реальной отправки, затем выполнить разрешённую отправку; создать коммит.
+
+### Решения этапа A
+
+- Когда отправлять: GitHub Actions — push в `master` (любой исход) и `workflow_dispatch` на любой ветке; push в остальные ветки сообщений не шлёт, чтобы не шуметь в чате (workflow запускается на push во все ветки). Исходы: успех, падение тестов, сбой до тестов, тесты без XML, ноль тестов, отмена или таймаут job `test`. Отмена всего workflow — без сообщения (`!cancelled()`): её вызывает пользователь или более новый push, который сообщит сам. Jenkins — уведомления нужны, реализация в фазе 7.
+- Secrets: repository secrets `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID`, только в `env` шага `Send Telegram notification` job `notify`; job `test` (код npm и Gradle) их не видит. Environment secrets отклонены: deployment branch policy не позволила бы проверку из `phase-6`, а каждый job с environment создаёт запись в Deployments. `secrets` нельзя использовать в `if:`, поэтому наличие проверяет скрипт: без секретов — `::warning::Telegram notification skipped: <имена> is not set`, текст сообщения в логе, exit 0.
+- Ошибка Telegram (HTTP не 200, `ok` не `true`, сетевая ошибка, таймаут 15 с, не-JSON): в лог — HTTP-статус, `ok`, `error_code`, `description` (переводы строк схлопываются), без URL; `::error::` и exit 1 — падает job `notify`, а не `test`. Ретраев нет. При зелёных тестах такой сбой делает workflow красным — сознательный выбор, чтобы поломка канала уведомлений была видна.
+- Формат JUnit XML проверен на артефактах `test-reports` запусков фазы 5 (успех и падение assertion) и на временном мини-проекте Gradle 9.8.2 + JUnit 6.1.3 в scratchpad: корень — `<testsuite>`, файл `TEST-<class>.xml` на класс; падение — `<failure>` в `<testcase>`; `@Disabled` и непрошедший assumption — `<skipped>`; любое исключение (включая `IllegalStateException`) — `<failure>`, поэтому `errors` у Gradle всегда 0; падение `@BeforeAll` — один testcase `initializationError` с `<failure>` и `tests="1"`, тесты класса не считаются. Ноль тестов в Gradle 9 XML не даёт: исходники без тестов — `failOnNoDiscoveredTests`, exit 1; `--tests` без совпадений — exit 1; нет исходников — `test NO-SOURCE`, exit 0.
+- Подсчёт: все `TEST-*.xml` каталога, корень `<testsuite>` или `<testsuites>`; по каждому `<testcase>`: есть `<failure>` — failed, `<error>` — errors, `<skipped>` — skipped, иначе passed. Суммы сверяются с атрибутами `tests`, `failures`, `skipped`, `errors`; расхождение — `::warning::`. Битый XML — `::warning::` и статус «results unreadable».
+- Исходы (по порядку проверки): `needs.test.result == cancelled` → ⚪ CANCELLED; шаг `Run tests` не выполнялся: `Compile tests` failure → ❌ BUILD FAILED: compilation, tests not run, иначе ❌ BUILD FAILED before tests; XML нет: `Run tests` failure → ❌ TESTS FAILED: no JUnit XML, success → ⚠️ NO TESTS EXECUTED; XML не читается → ❌ TEST RESULTS UNREADABLE; failed + errors > 0 → ❌ TESTS FAILED; `Run tests` failure без падений в XML → ❌ FAILED: Gradle test task failed; 0 тестов → ⚠️ NO TESTS EXECUTED; job `test` упал после тестов → ❌ CI FAILED after tests; иначе ✅ PASSED. Зелёный статус невозможен, если упал шаг тестов или job `test`.
+- Сообщение: plain text без `parse_mode` (экранирование не нужно), `link_preview_options.is_disabled = true`, обрезка до 4096 символов. Строки: статус, `Project`, `CI` (с событием), `Branch`, `Commit` (7 символов), `Tests` (total, passed, failed, skipped, errors), `Run`, `Report` — только если `needs.deploy-pages.result == 'success'`, URL из output job `deploy-pages`.
+- Устройство: job `notify` — `needs: [test, deploy-pages]`, `if: !cancelled() && (github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')`, `ubuntu-24.04`, `timeout-minutes: 5`, `permissions: contents: read`. Шаги: `actions/checkout` (`persist-credentials: false`, `sparse-checkout: scripts`); `actions/download-artifact` артефакта `test-reports` — только если `needs.test.outputs.test-reports-artifact == 'true'` (поведение action при отсутствии артефакта в README не описано); `python3 scripts/telegram_notify.py build/notify/test-reports/test-results/test`. Все данные GitHub — через `env`, не подстановкой в shell. Скрипт отдельным файлом — для проверки на фикстурах и переиспользования в Jenkins. Python 3 stdlib (`xml.etree.ElementTree`, `urllib.request`); на runner — Python 3.12.3 (README образа), локально проверено на 3.9.6 и 3.14.8.
+- Проверка без отправки: фикстуры и `unittest` в scratchpad, в репозиторий не коммитятся; в CI — `workflow_dispatch` на `phase-6` до создания secrets.
+- Внешние действия, разрешённые пользователем: push `phase-6` и трёх временных веток (коммиты с `[skip ci]`, чтобы не было push-запусков), `workflow_dispatch` на них, реальные отправки после создания secrets пользователем. Удаление временных веток — после отдельного подтверждения.
+
+`actions/download-artifact` v8.0.2 — `9000827ccba6bdab643e8b6fd33ac0654aef8333` (lightweight tag; сверено через REST API и `git ls-remote`). Остальные actions — версии и SHA фазы 5.
+
+Источники:
+
+- https://core.telegram.org/bots/api (Bot API 10.3, 2026-08-24): Making requests (`ok`, `description`, `error_code`, `parameters`), sendMessage (`text` 1–4096 символов), LinkPreviewOptions (`is_disabled`), Formatting options. Совпадает ли HTTP-статус с `error_code`, документация не говорит, поэтому проверяются оба.
+- https://docs.github.com/en/actions/reference/workflows-and-actions/contexts (`needs.<job>.result`, `steps.<id>.outcome`, доступность контекстов: `secrets` нет в `if`)
+- https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets
+- https://docs.github.com/en/actions/reference/workflows-and-actions/expressions (`!cancelled()`)
+- https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs (`[skip ci]` — только push и pull_request)
+- https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow (`gh workflow run --ref`)
+- https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax (`timeout-minutes` отменяет job)
+- https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md (Python 3.12.3)
+- https://github.com/actions/download-artifact: README, `action.yml` и release notes v8.0.0–v8.0.2
+
+### Изменения
+
+- `.github/workflows/ui-tests.yml`: `id: compile` у шага `Compile tests`, `id: upload-test-reports` у шага `Upload test reports`; outputs job `test` — `compile-outcome`, `test-outcome`, `test-reports-artifact`; output job `deploy-pages` — `page-url`; новый job `notify`. Условия существующих шагов, публикация Pages, тесты, Page Object, `build.gradle` и Allure не менялись.
+- `scripts/telegram_notify.py` (новый): разбор JUnit XML, выбор статуса, формирование сообщения, отправка `sendMessage` (POST JSON) с проверкой HTTP 200 и `ok is True`. Токен используется только в URL запроса внутри процесса и не печатается.
+
+### Проверки
+
+Локально:
+
+- Фикстуры в scratchpad: реальные XML из артефактов фазы 5 (3 passed; 2 passed + 1 failed), XML мини-проекта (passed + `@Disabled` + assumption + два падения + `initializationError`; passed + skipped), синтетические — `tests="0"`, корень `<testsuites>` с `<error>`, расхождение атрибутов и testcase, битый XML; пустой и отсутствующий каталог.
+- `unittest` в scratchpad, 30 тестов, запуск `python3 -I`: Python 3.9.6 — OK; Python 3.14.8 — сначала 1 failure в самом тесте (на 3.10+ `socket.timeout` — это `TimeoutError`, в логе другое имя класса, скрипт ошибку обработал), после правки проверки в тесте — OK. Покрыто: все исходы таблицы выше без секретов (warning, exit 0, текст сообщения), отсутствие только одного секрета, обрезка до 4096; ответы API через подмену `urlopen` — 200 `ok:true`, 200 `ok:false`, HTTP 400/401/429, `description` с переводом строки, HTTP 502 с HTML, `URLError`, таймаут; exit code `main` 1 при ошибке и 0 при успехе; URL, метод POST, `Content-Type`, тело запроса и таймаут 15 с. Фиктивные токен и chat id не попадают в вывод.
+- `python3 -m py_compile` — OK. actionlint 1.7.12 (скачан заново, sha256 архива и `checksums.txt` совпали с digest релиза, `shasum -c` — OK): 0 ошибок, exit code 0; правила `shellcheck` и `pyflakes` отключены — этих программ нет локально.
+
+В GitHub Actions (runner `ubuntu-24.04`, Chrome и ChromeDriver 155.0.8059.84). Ручные запуски — `gh workflow run ui-tests.yml --ref <ветка>` с input по умолчанию, по одному, следующий — после завершения предыдущего:
+
+| Run id | Ветка | Событие и коммит | Итог workflow | job `test` / `notify` | Telegram |
+|---|---|---|---|---|---|
+| 39400409706 | `phase-6` | push, коммит фазы | success | success / skipped | не вызывался (push не в `master`) |
+| 39400576173 | `phase-6` | dispatch, коммит фазы, secrets ещё не созданы | success | success / success | пропуск: `##[warning]Telegram notification skipped: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID is not set` |
+| 39402195727 | `phase-6` | dispatch, коммит фазы | success | success / success | ✅ PASSED, 3/3; HTTP 200, `ok=true` |
+| 39402426885 | `phase-6-tg-assert-fail` | dispatch, временный: ожидаемый текст `QA.GURU-PHASE6-CONTROLLED-FAIL` | failure | failure / success | ❌ TESTS FAILED, total 3, passed 2, failed 1; HTTP 200, `ok=true` |
+| 39402764768 | `phase-6-tg-compile-error` | dispatch, временный: удалена `;` в `SearchTests.java:13` | failure | failure / success | ❌ BUILD FAILED: compilation, tests not run; HTTP 200, `ok=true` |
+| 39402897408 | `phase-6-tg-api-error` | dispatch, временный: падение assertion и `TELEGRAM_CHAT_ID: '0'` в workflow | failure | failure / failure | `##[error]Telegram notification failed: HTTP 400, ok=false, error_code=400, description=Bad Request: chat not found` |
+
+- Доставка подтверждена ответом API (HTTP 200, `ok=true`, получен `message_id`) в трёх запусках; появление сообщений в чате видит пользователь, агентом не проверялось.
+- Ручной запуск на ветке выполняет workflow из этой ветки: job `notify` есть в запусках `phase-6` и временных веток, а в `master` его нет.
+- Outputs упавшего job `test` передаются в `notify`: в 39402764768 `NOTIFY_COMPILE_OUTCOME=failure`, шаг `Download test reports` — skipped (артефакта нет).
+- Причины падений тестов — контролируемые: в 39402426885 и 39402897408 `SearchTests > successfulSearchTest() FAILED`, `com.codeborne.selenide.ex.ElementShould at SearchTests.java:13`, два других теста прошли; в 39402764768 — `SearchTests.java:13: error: ';' expected`. Неожиданных падений и HTTP 429 не было.
+- Ошибка уведомления не меняет итог тестов и не скрывает падение: в 39402897408 job `test` — failure с аннотацией `Process completed with exit code 1`, у job `notify` — отдельные аннотации. Успешное уведомление не делает упавший запуск зелёным: 39402426885 и 39402764768 — failure.
+- Секреты в логах: в env шага отправки `TELEGRAM_BOT_TOKEN: ***` и `TELEGRAM_CHAT_ID: ***`; поиск по логам job `notify` всех пяти запусков — 0 вхождений `api.telegram.org` и 0 строк, похожих на токен бота.
+- Временные изменения есть только во временных ветках; ветка `phase-6` их не содержит. Пуш временных веток с `[skip ci]` push-запусков не создал.
+
+### Ограничения и непроверенное
+
+- Только на фикстурах, не в CI: тесты без XML, ноль тестов, сбой до компиляции (setup, `npm ci`, input), нечитаемый XML, отмена и таймаут job `test`; какое значение `needs.test.result` даёт таймаут, не проверялось.
+- Не проверены, потому что требуют слияния в `master`: уведомление на push в `master`, строка `Report` в реальном сообщении (output `page-url` job `deploy-pages`). Ссылка ведёт на текущий сайт Pages, который перезаписывается следующим запуском на `master`.
+- push и `workflow_dispatch` на одной ветке не-`master` делят группу `concurrency` и отменяют друг друга; отменённый запуск сообщения не шлёт. Не проверялось — в фазе запуски шли по одному.
+- Repository secrets доступны любому workflow в ветках репозитория, поэтому их может использовать любой с правом push. Защита environment не применялась (решение этапа A).
+- Ошибка Telegram при зелёных тестах делает workflow красным (job `notify` — failure); в CI проверена только вместе с упавшими тестами. При HTTP 429 от Telegram ретраев нет.
+- `errors` у Gradle всегда 0; падение `@BeforeAll` считается одним тестом `initializationError`.
+- Версия Python на runner в логах не печатается; скрипт проверен локально на 3.9.6 и 3.14.8 и в CI на образе runner.
+- Импорт скрипта в тестах создаёт `scripts/__pycache__`, который `.gitignore` не исключает; после локальных проверок каталог удалён.
+- Временные ветки `phase-6-tg-assert-fail`, `phase-6-tg-compile-error`, `phase-6-tg-api-error` остаются в `origin` и локально до подтверждения удаления.
+- После слияния PR #6 на `master` прошёл push-запуск 39398617650 (success, job `deploy-pages` — success). Пункты фазы 5, требующие `master`, в её разделе не отмечены — их нужно проверить отдельно.
 
 ## Фаза 7 — Jenkins
 
