@@ -1,0 +1,159 @@
+name: UI tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      browser_size:
+        description: Browser window size
+        type: choice
+        options:
+          - 1366x768
+          - 1920x1080
+        default: 1366x768
+  push:
+    branches:
+      - '**'
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      BROWSER_SIZE: ${{ inputs.browser_size || '1366x768' }}
+    outputs:
+      pages-artifact: ${{ steps.upload-pages.outcome == 'success' }}
+    steps:
+      - name: Validate inputs
+        run: |
+          case "$BROWSER_SIZE" in
+            1366x768|1920x1080) ;;
+            *)
+              echo "::error::Unsupported browser_size input"
+              exit 1
+              ;;
+          esac
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.0
+          cache: npm
+
+      - name: Install Allure Report
+        run: npm ci
+
+      - name: Print tool versions
+        run: |
+          google-chrome --version
+          chromedriver --version
+          java -version
+          node --version
+          npx allure --version
+          ./gradlew --version
+
+      - name: Compile tests
+        run: ./gradlew testClasses --console=plain
+
+      - name: Run tests
+        id: test
+        run: ./gradlew test -Dselenide.headless=true "-Dselenide.browserSize=$BROWSER_SIZE" --console=plain
+
+      - name: Upload Allure results
+        if: ${{ !cancelled() && (steps.test.outcome == 'success' || steps.test.outcome == 'failure') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: allure-results
+          path: build/allure-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload test reports
+        if: ${{ !cancelled() && (steps.test.outcome == 'success' || steps.test.outcome == 'failure') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports
+          path: |
+            build/test-results/test
+            build/reports/tests/test
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Check Allure results
+        id: check-results
+        if: ${{ !cancelled() && (steps.test.outcome == 'success' || steps.test.outcome == 'failure') }}
+        run: |
+          if ! compgen -G 'build/allure-results/*-result.json' > /dev/null; then
+            echo "::error::No Allure results found in build/allure-results"
+            exit 1
+          fi
+
+      - name: Generate Allure report
+        id: generate
+        if: ${{ !cancelled() && steps.check-results.outcome == 'success' }}
+        run: npx allure generate build/allure-results --output build/allure-report --clean
+
+      - name: Upload Allure report
+        if: ${{ !cancelled() && steps.generate.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: allure-report
+          path: build/allure-report
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Pages artifact
+        id: upload-pages
+        if: ${{ !cancelled() && steps.generate.outcome == 'success' && github.ref == 'refs/heads/master' }}
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: build/allure-report
+
+  deploy-pages:
+    needs: test
+    if: ${{ !cancelled() && github.ref == 'refs/heads/master' && needs.test.outputs.pages-artifact == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
