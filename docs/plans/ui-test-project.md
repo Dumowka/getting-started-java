@@ -20,9 +20,10 @@
 ## Текущее состояние
 
 - Фаза 0 завершена 2026-10-20: проверки выполнены, baseline 1/1 получен (Gradle 9.8.1 из локального кэша, Java 21), решения по параметрам, Java, wrapper и Page Object согласованы. Детали и ограничения — в разделе фазы 0.
-- Фазы 1–9 не реализованы. В репозитории только исходные `build.gradle` и `SearchTests`; wrapper, TestBase, Page Object, Allure и CI отсутствуют.
+- Фаза 1 реализована 2026-10-20 в ветке `phase-1` (один коммит; по решению пользователя запушена в `origin` и открыт PR в `master`, не влита): Gradle Wrapper 9.8.2, Java 21 toolchain, TestBase, передача четырёх свойств `selenide.*`; финальные запуски 1/1 с defaults и с переопределением. Детали — в разделе фазы 1.
+- Фазы 2–9 не реализованы: дополнительных тестов, Page Object, Allure и CI нет.
 
-Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 1, после подтверждения пользователя.
+Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 2, после подтверждения пользователя.
 
 ## Фаза 0 — Baseline
 
@@ -91,7 +92,9 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 
 ## Фаза 1 — TestBase
 
-Статус: не реализована.
+Статус: реализована 2026-10-20 в ветке `phase-1`, созданной от `master` после fast-forward до `3e7e2f8` (merge PR #1, фаза 0). Один коммит. По решению пользователя 2026-10-20 ветка запушена в `origin/phase-1` и для неё открыт PR в `master`; в `master` не влита. Фаза 2 ожидает подтверждения пользователя.
+
+Объём фазы:
 
 - Добавить штатный Gradle Wrapper актуальной стабильной версии (`bin`, без `distributionSha256Sum`) с executable bit для gradlew.
 - Зафиксировать Java 21 toolchain.
@@ -108,6 +111,51 @@ gradle test --tests SearchTests.successfulSearchTest --rerun-tasks --console=pla
 ./gradlew test --tests SearchTests.successfulSearchTest --rerun-tasks --console=plain
 ./gradlew test --tests SearchTests.successfulSearchTest -Dselenide.baseUrl=https://www.github.com -Dselenide.browser=chrome -Dselenide.browserSize=1920x1080 -Dselenide.headless=true --rerun-tasks --console=plain
 ```
+
+### Изменения
+
+- `gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`, `gradle/wrapper/gradle-wrapper.properties`: Gradle 9.8.2, `distributionUrl=…/gradle-9.8.2-bin.zip`, `distributionSha256Sum` отсутствует, у `gradlew` режим `100755`.
+- `build.gradle`: `java.toolchain.languageVersion = 21`; в `test` в JVM тестов передаются только `selenide.baseUrl`, `selenide.browser`, `selenide.browserSize`, `selenide.headless` и только если они заданы при запуске Gradle (`providers.systemProperty`). Версии зависимостей не менялись.
+- `src/test/java/TestBase.java` (default package, как `SearchTests`): `@BeforeEach` задаёт `Configuration.baseUrl/browser/browserSize/headless` из `System.getProperty` с явными defaults `https://github.com`, `chrome`, `1366x768`, `false`; `@AfterEach` вызывает `closeWebDriver()`. Defaults хранятся только в TestBase, поэтому действуют и при запуске вне Gradle. `headless` разбирается `Boolean.parseBoolean`: любое значение кроме `true` (без учёта регистра) даёт `false`, отдельной валидации нет.
+- `SearchTests`: `extends TestBase`, `open("https://github.com/search")` → `open("/search")`. Локаторы, данные и assertion не менялись.
+- По решению пользователя 2026-10-20 после первого коммита фазы: `.gitignore` дополнен `bin/` (`.class`-файлы, которые компилирует IDE VS Code Java); добавлен `.gitattributes`, как его генерирует `gradle init`: `/gradlew text eol=lf`, `*.bat text eol=crlf`, `*.jar binary`.
+
+### Gradle Wrapper
+
+- Актуальная стабильная версия по https://services.gradle.org/versions/current на 2026-10-20: 9.8.2 (`"current": true`, `"final": true`, сборка 2026-10-19). В кэше был только 9.8.1, поэтому скачивание 9.8.2 согласовано с пользователем.
+- Генерация: закэшированный `~/.gradle/wrapper/dists/gradle-9.8.1-bin/…/bin/gradle wrapper --gradle-version 9.8.2 --distribution-type bin` с `JAVA_HOME` = OpenJDK 21.0.12.1 → BUILD SUCCESSFUL. Затем `./gradlew wrapper --gradle-version 9.8.2 --distribution-type bin` без `JAVA_HOME` (Java 26 по умолчанию): скачан `gradle-9.8.2-bin.zip`, BUILD SUCCESSFUL in 19m (почти всё время — загрузка дистрибутива).
+- sha256 `gradle-wrapper.jar` после обоих запусков — `3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98`, совпадает с `wrapperChecksum` версии 9.8.2 на services.gradle.org.
+- `./gradlew --version`: Gradle 9.8.2, Launcher JVM 26.0.2.1, Daemon JVM — текущая Java 26. То есть Gradle 9.8.2 запускается на локальной Java 26, а компиляция и тесты идут на toolchain 21.
+
+### Проверки
+
+Все запуски выполнены из корня репозитория через `./gradlew`, `JAVA_HOME` не задан. Для проверок временно добавлялись класс `Phase1DiagnosticsTest extends TestBase` (печать системных свойств, `Configuration`, `WebDriverRunner.hasWebDriverStarted()`, URL, session id, размера окна, `navigator.userAgent` и дочерних процессов JVM через `ProcessHandle.current().descendants()`) и временный `@AfterAll` в `SearchTests`. После проверок всё удалено; `grep` по `src` подтвердил отсутствие следов диагностики.
+
+- Toolchain: `./gradlew javaToolchains` нашёл JDK 17, 21, 24 и 26 локально; auto-provisioning не настраивался. В JVM тестов `java.version=21.0.12.1`, у `TestBase.class` major version 65 (Java 21).
+- Defaults (`./gradlew test --tests Phase1DiagnosticsTest -Dselenide.timeout=1 -Dfoo=bar --rerun-tasks`): 3/3. В JVM тестов нет ни одного свойства `selenide.*` и нет `foo` — лишние свойства не передаются. `Configuration`: `baseUrl=https://github.com`, `browser=chrome`, `browserSize=1366x768`, `headless=false`, `timeout=4000` (default Selenide, `-Dselenide.timeout=1` не дошёл). `open("/search")` → `https://github.com/search`, окно 1366x768, UA без `Headless`.
+- Переопределение без браузера (`--tests Phase1DiagnosticsTest.configOnly -Dselenide.baseUrl=https://example.com -Dselenide.browser=dummybrowser -Dselenide.browserSize=1920x1080 -Dselenide.headless=true`): 1/1. В JVM тестов ровно четыре переданных свойства, `Configuration` содержит все четыре значения, включая `browser=dummybrowser`.
+- Настройка не запускает браузер: после `@BeforeEach` `hasWebDriverStarted=false`, дочерних процессов JVM 0 — и с defaults, и с `browser=dummybrowser` (тест прошёл, значит драйвер не создавался).
+- Использование `baseUrl` внутри JVM тестов (`--tests Phase1DiagnosticsTest -Dselenide.baseUrl=https://example.com -Dselenide.browser=chrome -Dselenide.browserSize=1920x1080 -Dselenide.headless=true`): 3/3, `open("/search")` → `https://example.com/search`, окно 1920x1080, UA `HeadlessChrome/155.0.0.0`.
+- Изоляция сессий (в обоих полных прогонах диагностики): перед каждым тестом `hasWebDriverStarted=false` и 0 дочерних процессов; два теста получили разные session id; во время теста дочерние процессы — новые `chromedriver` и `Google Chrome` с другими PID.
+- Cleanup после успеха: временный `@AfterAll` в `SearchTests` при исходном assertion — 1/1, `hasWebDriverStarted=false`, 0 дочерних процессов до выхода JVM; после прогона `pgrep chromedriver` пуст.
+- Cleanup после контролируемого падения: assertion временно заменён на `text("QA.GURU-PHASE1-CONTROLLED-FAIL")`. Результат: `SearchTests > successfulSearchTest() FAILED`, `com.codeborne.selenide.ex.ElementShould at SearchTests.java:19`, BUILD FAILED, exit code 1, `failures="1"`. В `@AfterAll` `hasWebDriverStarted=false`, 0 дочерних процессов; `pgrep chromedriver` пуст. Исходный assertion восстановлен (`git diff` `SearchTests` содержит только `extends TestBase` и `/search`).
+
+### Финальные запуски (после удаления диагностики)
+
+- Первая команда (defaults, headed): BUILD SUCCESSFUL in 45s, exit code 0, `TEST-SearchTests.xml`: `tests="1" skipped="0" failures="0" errors="0"`, `time="44.021"`.
+- Вторая команда (`https://www.github.com`, chrome, 1920x1080, headless): BUILD SUCCESSFUL in 7s, exit code 0, `tests="1" skipped="0" failures="0" errors="0"`, `time="6.988"`.
+- После обоих запусков `pgrep chromedriver` пуст.
+
+### Ограничения и непроверенное
+
+- Headed-окно на macOS ограничено экраном: с `-Dselenide.browserSize=1920x1080` без headless фактический размер 1728x999 (дисплей Retina 3456x2234). 1366x768 в headed и 1920x1080 в headless применяются точно.
+- stderr тестов: предупреждение SLF4J об отсутствии провайдера (NOP logger) и предупреждение Selenium о CDP: Chrome 155.0.8059.85, ближайшая поддерживаемая Selenium 4.49.0 версия CDP — 153. На прохождение тестов не влияли.
+- Проверка `browser=dummybrowser` подтверждает только чтение значения в `Configuration`; запуск других браузеров не проверялся. Headless — по UA `HeadlessChrome`.
+- Не проверялись: `gradlew.bat` на Windows, запуск из IDE, чистый checkout, configuration cache, параллельный запуск тестов.
+- Успешные запуски не гарантируют доступность GitHub и неизменность результатов по `qa.guru` (см. ограничения фазы 0). HTTP 429 в этой фазе не наблюдался.
+- `gradlew.bat`, который сгенерировал Gradle, имеет CRLF-окончания во всех 112 строках; после удаления CR в конце строк пробелов нет. Без `.gitattributes` `git diff --check` выдавал на него 112 предупреждений `trailing whitespace`. С `.gitattributes` после `git add --renormalize` в индексе хранится LF, в рабочем дереве остаётся CRLF, `git diff --check` проходит без предупреждений.
+- Chromedriver: новых каталогов в `~/.cache/selenium/chromedriver/mac-arm64` не появилось (последний — `155.0.8059.84` от фазы 0), хотя у Chrome версия 155.0.8059.85.
+- `bin/` теперь игнорируется git и в коммит не входит.
 
 ## Фаза 2 — Tests
 
