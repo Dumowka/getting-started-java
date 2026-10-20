@@ -37,6 +37,9 @@ jobs:
       BROWSER_SIZE: ${{ inputs.browser_size || '1366x768' }}
     outputs:
       pages-artifact: ${{ steps.upload-pages.outcome == 'success' }}
+      compile-outcome: ${{ steps.compile.outcome }}
+      test-outcome: ${{ steps.test.outcome }}
+      test-reports-artifact: ${{ steps.upload-test-reports.outcome == 'success' }}
     steps:
       - name: Validate inputs
         run: |
@@ -83,6 +86,7 @@ jobs:
           ./gradlew --version
 
       - name: Compile tests
+        id: compile
         run: ./gradlew testClasses --console=plain
 
       - name: Run tests
@@ -99,6 +103,7 @@ jobs:
           retention-days: 14
 
       - name: Upload test reports
+        id: upload-test-reports
         if: ${{ !cancelled() && (steps.test.outcome == 'success' || steps.test.outcome == 'failure') }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -153,7 +158,48 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page-url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  notify:
+    needs:
+      - test
+      - deploy-pages
+    if: ${{ !cancelled() && (github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out notification script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+
+      - name: Download test reports
+        if: ${{ needs.test.outputs.test-reports-artifact == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: test-reports
+          path: build/notify/test-reports
+
+      - name: Send Telegram notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NOTIFY_PROJECT: ${{ github.repository }}
+          NOTIFY_CI: GitHub Actions
+          NOTIFY_EVENT: ${{ github.event_name }}
+          NOTIFY_BRANCH: ${{ github.ref_name }}
+          NOTIFY_COMMIT: ${{ github.sha }}
+          NOTIFY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NOTIFY_REPORT_URL: ${{ needs.deploy-pages.result == 'success' && needs.deploy-pages.outputs.page-url || '' }}
+          NOTIFY_TEST_JOB_RESULT: ${{ needs.test.result }}
+          NOTIFY_COMPILE_OUTCOME: ${{ needs.test.outputs.compile-outcome }}
+          NOTIFY_TESTS_OUTCOME: ${{ needs.test.outputs.test-outcome }}
+        run: python3 scripts/telegram_notify.py build/notify/test-reports/test-results/test
