@@ -26,6 +26,11 @@
 - Telegram (фаза 6, согласовано 2026-10-20): в GitHub Actions — отдельный job `notify` (`needs: [test, deploy-pages]`), только для push в `master` и `workflow_dispatch` на любой ветке, по условию `!cancelled()`: при отмене workflow сообщения нет. Repository secrets `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID` передаются только в `env` шага отправки. Без секретов — `::warning::` и exit 0, итог workflow определяют тесты. Ошибка Telegram API — `::error::` и падение job `notify` без ретраев; job `test` и его итог не меняются.
 - Скрипт `scripts/telegram_notify.py` (Python 3 stdlib, без зависимостей), данные — через переменные `NOTIFY_*`, чтобы переиспользовать его в Jenkins. Статистика — по элементам `<testcase>` в `TEST-*.xml` из артефакта `test-reports`, со сверкой с атрибутами `<testsuite>`; исход — по `outcome` шагов `Compile tests` и `Run tests` и `needs.test.result`. Сообщение — plain text без `parse_mode`, превью ссылок отключено; ссылка на Pages — только если `deploy-pages` этого запуска успешен.
 - Jenkins: Telegram-уведомления нужны; реализуются в фазе 7 тем же скриптом, имена Jenkins Credentials и правила веток согласуются там.
+- Jenkins (фаза 7, 2026-10-20; решения этапа A пользователь отдал на усмотрение исполнителя, выбор Selenoid подтвердил явно): общий Jenkins школы https://jenkins.qa.guru, Multibranch Pipeline `sirdumowka-getting-started-java` с источником Git (без GitHub API), фильтр веток `master phase-7 phase-7-*`, свойство «Suppress automatic SCM triggering», без webhook и периодического scan — сборки и scan только вручную. Jobs и credentials создаёт пользователь. Declarative `Jenkinsfile` в корне, агент `java-jdk21`, те же команды, что в GitHub Actions; `timeout` 20 минут, `disableConcurrentBuilds`, хранение 20 сборок и артефактов 14 дней.
+- Браузер в Jenkins — Selenoid школы: credential `selenoid-sirdumowka-remote-url` (выдан школой) передаётся как `-Dselenide.remote`. `build.gradle` передаёт в JVM тестов пятое свойство `selenide.remote`, только если оно задано; локально и в GitHub Actions оно не задаётся. Это исключение из решения «только четыре свойства» согласовано пользователем 2026-10-20: на агентах нет Chrome и его системных библиотек, сборки идут под root.
+- Параметр Jenkins `BROWSER_SIZE` (`choice`: `1366x768` по умолчанию, `1920x1080`), fallback `1366x768` для первой сборки ветки, проверка `case`; `selenide.headless=true` всегда.
+- Статус сборки: ненулевой код Gradle — FAILURE; `junit` без `allowEmptyResults` вызывается, только если шаг тестов выполнялся. Отчёт — `npx allure generate` (Allure 3.21.0 из `package-lock.json`) при наличии `*-result.json`, иначе FAILURE; `build/allure-results`, JUnit XML, HTML-отчёт Gradle и Allure-отчёт сохраняются через `archiveArtifacts`. Allure Jenkins plugin не используется.
+- Telegram из Jenkins: тот же скрипт на агенте `python-python314` (на `java-jdk21` нет Python), JUnit XML и скрипт передаются через `stash`. Jenkins Credentials (secret text) `sirdumowka-telegram-bot-token` и `sirdumowka-telegram-chat-id`; без них — предупреждение, итог определяют тесты; ошибка Telegram — FAILURE без ретраев. Сообщение для всех веток и исходов, кроме ABORTED. Credentials пока не создаются: у агентов нет доступа к `api.telegram.org`.
 
 ## Текущее состояние
 
@@ -35,10 +40,11 @@
 - Фаза 3 реализована 2026-10-20 в ветке `phase-3` (коммит фазы и коммит с расследованием длительности тестов; ветка запушена в `origin`; PR #4 влит в `master`): тесты и TestBase перенесены в пакет `tests`, Page Object (`BasePage`, `SearchPage`, три компонента) — в пакете `pages`; каждый тест отдельно 1/1, весь набор 3/3 с defaults и в headless. Детали — в разделе фазы 3.
 - Фаза 4 реализована 2026-10-20 в ветке `phase-4` (один коммит; ветка запушена в `origin`; PR #5 влит в `master`): Allure Report 3.21.0 (npm), Allure Java 3.0.0 (`allure-jupiter`, `allure-selenide`), AspectJ 1.9.25.1, `@Step` на `SearchPage`, вложения при падении; весь набор 3/3 с defaults и в headless, контролируемое падение проверено. Детали — в разделе фазы 4.
 - Фаза 5 реализована 2026-10-20 в ветке `phase-5` (запушена в `origin`; PR #6 влит в `master`): workflow GitHub Actions `ui-tests.yml`; в реальном GitHub Actions проверены успешный запуск 3/3, контролируемое падение assertion, ошибка компиляции и отсутствие результатов Allure. После слияния проверены запуск на `master` с публикацией отчёта в Pages и ручной запуск на ветках с input по умолчанию; input `1920x1080` и публикация при упавших тестах не проверены. Детали — в разделе фазы 5.
-- Фаза 6 реализована 2026-10-20 в ветке `phase-6` (запушена в `origin`; открыт PR #7 в `master`, не влит): job `notify` и скрипт `scripts/telegram_notify.py`; в реальном GitHub Actions проверены пропуск без секретов, отправки для успеха, падения assertion и ошибки компиляции (доставку в чат подтвердил пользователь) и ошибка Telegram API. Временные ветки проверок удалены. Детали — в разделе фазы 6.
-- Фазы 7–9 не реализованы.
+- Фаза 6 реализована 2026-10-20 в ветке `phase-6` (запушена в `origin`; PR #7 влит в `master`): job `notify` и скрипт `scripts/telegram_notify.py`; в реальном GitHub Actions проверены пропуск без секретов, отправки для успеха, падения assertion и ошибки компиляции (доставку в чат подтвердил пользователь) и ошибка Telegram API. Временные ветки проверок удалены. Детали — в разделе фазы 6.
+- Фаза 7 реализована 2026-10-20 в ветке `phase-7` (запушена в `origin`; PR не открывался): Jenkinsfile для общего Jenkins школы https://jenkins.qa.guru, браузер — Selenoid школы через `selenide.remote`; на реальных агентах проверены успешные сборки с `1366x768` и `1920x1080`, контролируемое падение assertion, ошибка компиляции, отсутствие результатов Allure и ошибка отправки в Telegram. Реальная доставка в Telegram из Jenkins не проверена: у агентов нет доступа к `api.telegram.org`. Детали — в разделе фазы 7.
+- Фазы 8–9 не реализованы.
 
-Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 7, после подтверждения пользователя.
+Порядок дальнейшей работы: фазы выполняются по одной — согласование, реализация, проверка, отдельный коммит. Следующая — фаза 8, после подтверждения пользователя.
 
 ## Фаза 0 — Baseline
 
@@ -494,7 +500,7 @@ Actions (теги — `latest` на 2026-10-20; SHA сверены через RE
 
 ## Фаза 6 — Telegram
 
-Статус: реализована 2026-10-20 в ветке `phase-6`, созданной от `master` после fast-forward до merge PR #6 (фаза 5). Коммит с job `notify` и скриптом и коммит с обновлением плана. Ветка запушена в `origin/phase-6`; по решению пользователя открыт PR #7 в `master`, не влит. Решения этапа A подтверждены пользователем 2026-10-20 (все предложенные варианты, включая внешние действия). Secrets созданы пользователем. Пользователь подтвердил, что все три реальных сообщения пришли в чат. После подтверждения пользователя временные ветки проверок удалены локально и в `origin`. Фаза 7 ожидает подтверждения пользователя.
+Статус: реализована 2026-10-20 в ветке `phase-6`, созданной от `master` после fast-forward до merge PR #6 (фаза 5). Коммит с job `notify` и скриптом и коммит с обновлением плана. Ветка запушена в `origin/phase-6`; по решению пользователя открыт PR #7 в `master`; PR #7 влит в `master`. Решения этапа A подтверждены пользователем 2026-10-20 (все предложенные варианты, включая внешние действия). Secrets созданы пользователем. Пользователь подтвердил, что все три реальных сообщения пришли в чат. После подтверждения пользователя временные ветки проверок удалены локально и в `origin`. Фаза 7 ожидает подтверждения пользователя.
 
 ### Перед реализацией согласовать
 
@@ -583,23 +589,109 @@ Actions (теги — `latest` на 2026-10-20; SHA сверены через RE
 
 ## Фаза 7 — Jenkins
 
-Статус: не реализована. Реализация начинается только после отдельного согласования окружения Jenkins. Наличие Jenkinsfile не означает проверку pipeline; запуск и публикация отчёта подтверждаются на реальном агенте либо остаются явно непроверенными.
+Статус: реализована 2026-10-20 в ветке `phase-7`, созданной от `master` после fast-forward до merge PR #7 (фаза 6). Коммит с `Jenkinsfile` и передачей `selenide.remote`, коммит с исправлением `Jenkinsfile` после первой сборки, коммит с обновлением плана. Ветка запушена в `origin/phase-7`, PR не открывался. Решения этапа A пользователь отдал на усмотрение исполнителя («делай всё на своё усмотрение»); выбор Selenoid школы вместо локального браузера подтвердил явно. Jobs в Jenkins создавал и сборки запускал пользователь: создание jobs через API агенту не разрешено (изменение общего сервера); агент читал Jenkins через API токеном пользователя из файла вне репозитория, значение токена в чат и вывод не попадало. Фаза 8 ожидает подтверждения пользователя.
 
 ### Перед реализацией уточнить
 
-- [ ] Где находятся Jenkins и агент, доступ, ОС, label и доступные инструменты.
-- [ ] Доступность Java, браузеров, драйверов и генератора Allure, выбранного в фазе 4.
-- [ ] Параметры запуска, имена Jenkins Credentials и Telegram-уведомления.
-- [ ] Способ генерации и публикации Allure-отчёта (CLI, как в GitHub Actions, или Allure Jenkins plugin).
+- [x] Где находятся Jenkins и агент, доступ, ОС, label и доступные инструменты.
+- [x] Доступность Java, браузеров, драйверов и генератора Allure, выбранного в фазе 4.
+- [x] Параметры запуска, имена Jenkins Credentials и Telegram-уведомления.
+- [x] Способ генерации и публикации Allure-отчёта (CLI, как в GitHub Actions, или Allure Jenkins plugin).
 
 ### Реализация и проверка
 
-- [ ] Добавить Jenkinsfile с теми же командами тестов и генерации отчёта, что локально и в GitHub Actions.
-- [ ] Публиковать JUnit XML, сохранять результаты, вложения и отчёт при падениях.
-- [ ] Проверить выбранный способ генерации отчёта на реальном агенте; не предполагать наличие плагина или CLI.
-- [ ] При отсутствии совместимости согласовать альтернативную генерацию и хранение отчёта.
-- [ ] Не устанавливать плагины и не менять Jenkins глобально без разрешения.
-- [ ] Разделить проверку Jenkinsfile и реальный запуск Jenkins; создать коммит.
+- [x] Добавить Jenkinsfile с теми же командами тестов и генерации отчёта, что локально и в GitHub Actions.
+- [x] Публиковать JUnit XML, сохранять результаты, вложения и отчёт при падениях.
+- [x] Проверить выбранный способ генерации отчёта на реальном агенте; не предполагать наличие плагина или CLI.
+- [x] При отсутствии совместимости согласовать альтернативную генерацию и хранение отчёта.
+- [x] Не устанавливать плагины и не менять Jenkins глобально без разрешения.
+- [x] Разделить проверку Jenkinsfile и реальный запуск Jenkins; создать коммит.
+
+### Окружение Jenkins
+
+Выяснено чтением REST API (`whoAmI`, `computer`, `pipeline-syntax`, конфигурация и лог собственного job пользователя) и пробным job `sirdumowka-phase7-agent-probe` (inline pipeline, сборки #1–#4, создан пользователем).
+
+- https://jenkins.qa.guru — общий Jenkins школы, версия 2.581, вход через SSO школы. Пользователь `sirdumowka` (группа студентов) может создавать jobs; список плагинов, мониторинг нод и хранилища credentials ему закрыты (HTTP 403 или пусто).
+- У built-in node 0 executors. Агенты — контейнеры по 1 executor: `java-jdk21-jenkins-agent-1…5` (label `java-jdk21`), `python-python314-jenkins-agent-1…5` (label `python-python314`), `js-node24-…`.
+- `java-jdk21`: Debian 13, x86_64, сборка под root; Temurin 21.0.12+8, Node.js 26.7.0, npm 11.19.0, git 2.47.3, глобальный `allure` 3.13.0 (серверный, проектом не используется). Нет Python 3, Chrome/Chromium, ChromeDriver, Docker. Chrome for Testing 155.0.8059.84 в `~/.cache/selenium` (скачан ранее Selenium Manager) не запускается: нет 24 системных библиотек (`libglib-2.0`, `libnss3`, `libX11`, `libgbm` и др.). Доступны github.com, registry.npmjs.org, services.gradle.org, Maven Central, Chrome for Testing.
+- `python-python314`: Alpine, x86_64, root; Python 3.14.4, git 2.52.0.
+- `api.telegram.org` недоступен с обоих типов агентов (таймаут curl, `Network unreachable` у Python urllib); переменных прокси нет. Прокси школы для Telegram требует авторизации (SOCKS5 — `No authentication method was acceptable`, HTTP CONNECT — отказ); её учётные данные не используются.
+- Шаги pipeline (по `pipeline-syntax`): есть `junit`, `archiveArtifacts`, `withCredentials`, `stash`/`unstash`, `timeout`, `timestamps`, `allure`, `nodejs`, `validateDeclarativePipeline`; нет `publishHTML` (HTML Publisher) и глобальной переменной `docker` (Docker Pipeline). Версии из конфигураций: `pipeline-model-definition` 2.2293, `workflow-cps` 4378, Git 5.10.1, Credentials Binding 728, `allure-jenkins-plugin` 3.0.0.
+- Archived artifacts отдаются с CSP `sandbox allow-same-origin; default-src 'none'; img-src 'self'; style-src 'self';` — JavaScript Allure-отчёта в Jenkins не выполнится; resource root URL не настроен. Страница отчёта Allure-плагина (`…/allure/`) отдаётся с CSP, разрешающим скрипты.
+
+### Решения этапа A
+
+- Тип job — Multibranch Pipeline с источником Git: ветки определяются `git ls-remote`, без GitHub API и его лимитов; фильтр `master phase-7 phase-7-*`; «Suppress automatic SCM triggering» — scan не запускает сборки; без webhook и периодического scan, по опыту фазы 5 (риск HTTP 429). Pipeline from SCM отклонён: для временных веток пришлось бы менять конфигурацию job.
+- Браузер — Selenoid школы (см. «Согласованные решения»). Отклонены: Chrome for Testing на агенте (нет библиотек, под root нужен `--no-sandbox`, который Selenide 7.18.2 сам не добавляет и который отклонён в фазе 5); Docker-агент (нет плагина Docker Pipeline и `docker` на агенте); установка Chrome администраторами (вне контроля проекта). Selenide читает `selenide.remote` сам (`SelenideConfig`), `TestBase` не менялся.
+- Параметр `BROWSER_SIZE` передаётся в `sh` только через окружение; `parameters` регистрируются после первой сборки ветки, поэтому в `environment` — fallback `1366x768`.
+- Статус: ненулевой код Gradle падает в `sh` — FAILURE; `junit` при упавших тестах выставил бы UNSTABLE, но результат сборки может только ухудшаться, поэтому итог — FAILURE. UNSTABLE для упавших тестов отклонён: потребовал бы игнорировать код Gradle.
+- Отчёт — `npm ci` и `npx allure generate`, как в GitHub Actions; открывается после скачивания (`…/artifact/build/allure-report/*zip*/allure-report.zip`). Allure Jenkins plugin 3.0.0 умеет Allure 3 (вывод фазы 4 о Report 2 устарел), но использует серверную tool-установку (3.13.0), а не закреплённую 3.21.0 — не подключён.
+- Checkout — первая стадия с `deleteDir()` и `checkout(scm)` (коммит берётся из результата `checkout`); отсутствие результатов Allure — `error` в `post { always }`; уведомление — в `post { cleanup }`, которое выполняется и после ошибки в `always`.
+- Telegram: `withCredentials` с несуществующим ID бросает `CredentialNotFoundException`; перехватывается только она, и скрипт запускается без секретов (warning, exit 0). `NOTIFY_PROJECT=Dumowka/getting-started-java`, `NOTIFY_CI=Jenkins`, `NOTIFY_EVENT` пуст, `NOTIFY_BRANCH=BRANCH_NAME`, `NOTIFY_COMMIT` — из `checkout`, `NOTIFY_RUN_URL=BUILD_URL`, `NOTIFY_TEST_JOB_RESULT` — `success` при `currentBuild.currentResult == SUCCESS`, иначе `failure`; `NOTIFY_COMPILE_OUTCOME`/`NOTIFY_TESTS_OUTCOME` — переменные стадий; `NOTIFY_REPORT_URL` не задаётся. Скрипт не менялся; префиксы `::warning::`/`::error::` в логе Jenkins — обычный текст.
+
+Источники:
+
+- https://www.jenkins.io/doc/book/pipeline/development/ (linter `/pipeline-model-converter/validate`)
+- https://www.jenkins.io/doc/book/security/user-content/ (CSP для файлов workspace и артефактов, resource root URL)
+- https://www.jenkins.io/doc/pipeline/steps/junit/ (UNSTABLE при падениях, `allowEmptyResults`)
+- https://www.jenkins.io/doc/pipeline/steps/workflow-basic-steps/ («the build result can only get worse»)
+- https://www.jenkins.io/doc/pipeline/steps/workflow-durable-task-step/ (ненулевой код `sh`, `returnStatus`)
+- https://www.jenkins.io/doc/pipeline/steps/credentials-binding/ (маскирование, одинарные кавычки)
+- https://www.jenkins.io/doc/book/pipeline/syntax/ (`choice`, `post`, порядок условий, `cleanup`)
+- https://www.jenkins.io/doc/book/pipeline/multibranch/, https://www.jenkins.io/doc/book/using/using-credentials/
+- https://plugins.jenkins.io/allure-jenkins-plugin/ (3.0.0: Recommended Allure 3, требует Jenkins 2.541.3)
+- https://www.selenium.dev/documentation/selenium_manager/ (скачивание Chrome for Testing в `~/.cache/selenium`)
+- исходники `selenide-core` 7.18.2: `SelenideConfig` (`selenide.remote`), `AbstractChromiumDriverFactory` (аргументы Chrome без `--no-sandbox`)
+
+### Изменения
+
+- `Jenkinsfile` (новый): стадии `Check out repository`, `Validate parameters`, `Install Allure Report` (`npm ci`), `Print tool versions`, `Compile tests` (`./gradlew testClasses --console=plain`), `Run tests` (`./gradlew test -Dselenide.headless=true "-Dselenide.browserSize=$BROWSER_SIZE" "-Dselenide.remote=$SELENOID_REMOTE_URL" --console=plain` внутри `withCredentials`); `post { always }` — `stash`, `archiveArtifacts` результатов и отчётов, `junit`, проверка `*-result.json`, `npx allure generate build/allure-results --output build/allure-report --clean`, `archiveArtifacts` отчёта; `post { cleanup }` — уведомление на `python-python314`. Без `catchError`, `|| true`, ретраев.
+- `build.gradle`: `selenide.remote` добавлен в список свойств, передаваемых в JVM тестов, если они заданы.
+- Тесты, Page Object, `TestBase`, Allure-настройки, workflow GitHub Actions и `scripts/telegram_notify.py` не менялись.
+
+### Проверка Jenkinsfile
+
+- Declarative linter Jenkins (`curl -X POST --user … -F "jenkinsfile=<Jenkinsfile" https://jenkins.qa.guru/pipeline-model-converter/validate`): `Jenkinsfile successfully validated.` для обеих версий. Контроль: копия с `stagez` вместо `stages` — `Undefined section "stagez"`, `Missing required section "stages"`.
+- Пробные скрипты перед передачей пользователю тоже проверялись linter (после того как сборка #2 пробного job упала на компиляции скрипта, записанного в одну строку).
+
+### Локальные проверки
+
+- `./gradlew test -Dselenide.headless=true --rerun-tasks --console=plain` без `selenide.remote`, дважды: 1 из 3 и 2 из 3 тестов упали с `TimeoutException: Timed out receiving message from renderer` на шаге `$("open") https://github.com/search`. Причина — окружение: канал около 38 КБ/с (`curl` github.com/search 4–10 с, файл cdnjs 600 КБ — 15.8 с); на скриншоте обычная страница GitHub, признаков HTTP 429 нет. Изменение не влияет на этот случай (свойство не задано); отсутствие регрессии подтверждено запуском GitHub Actions ниже.
+- `./gradlew test --tests tests.SearchTests.successfulSearchTest -Dselenide.headless=true -Dselenide.remote=http://127.0.0.1:9/wd/hub --rerun-tasks`: за 0.13 с `SessionNotCreatedException` → `ConnectException`, локальный chromedriver не запускался — свойство доходит до JVM тестов.
+- GitHub Actions после push `phase-7`: запуск 39414547033 (push, коммит с `Jenkinsfile` и `build.gradle`) — success. Коммит с исправлением `Jenkinsfile` и временные ветки помечены `[skip ci]` — запусков не было.
+
+### Реальные сборки
+
+Job `sirdumowka-getting-started-java` (Multibranch), сборки запускал пользователь вручную; временные ветки собирались параллельно на разных агентах. Во всех сборках credentials Telegram отсутствовали, и `CredentialNotFoundException` перехватывалась (`Telegram credentials not found: Could not find credentials entry with ID 'sirdumowka-telegram-bot-token'`).
+
+| Ветка, № | Коммит | Параметр | Итог | JUnit | Артефакты | Telegram |
+|---|---|---|---|---|---|---|
+| `phase-7` #1 | коммит фазы | — (первая сборка) | FAILURE | не запускались | 0 | скрипт не найден |
+| `phase-7` #2 | исправление `Jenkinsfile` | `1366x768` | SUCCESS | 3 passed (5.8 / 2.5 / 2.0 с) | 141: отчёт 123, результаты 7, HTML Gradle 8, XML 3 | ✅ PASSED, warning о пропуске |
+| `phase-7` #3 | исправление `Jenkinsfile` | `1920x1080` | SUCCESS | 3 passed | 141 | ✅ PASSED, warning |
+| `phase-7-jk-assert-fail` #1 | временный: ожидаемый текст `QA.GURU-PHASE7-CONTROLLED-FAIL` | fallback `1366x768` | FAILURE | 2 passed, 1 failed | 145, включая PNG и HTML вложения | ❌ TESTS FAILED, warning |
+| `phase-7-jk-compile-error` #1 | временный: удалена `;` в `SearchTests.java:13` | fallback | FAILURE | не запускались | 0 | ❌ BUILD FAILED: compilation, tests not run, warning |
+| `phase-7-jk-no-results` #1 | временный: `allure.results.directory=build/allure-results-phase7-redirected` | fallback | FAILURE | 3 passed | 11: HTML Gradle и XML, отчёта нет | ❌ CI FAILED after tests, warning |
+| `phase-7-jk-tg-error` #1 | временный: фиктивные `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` в команде уведомления | fallback | FAILURE | 3 passed | 141 | `::error::Telegram API request failed: URLError` |
+
+- #1: две ошибки `Jenkinsfile` — пустой `BROWSER_SIZE` в первой сборке (параметры ещё не зарегистрированы) остановил проверку `case`; checkout шёл после проверки, `stash` — 0 файлов, на Python-агенте нет скрипта. Исправлено (checkout первым, fallback параметра), повторено в #2.
+- #2 и #3: `Run tests` — BUILD SUCCESSFUL (22 с и 17 с), в логе `-Dselenide.remote=****` (маскирование `withCredentials`), `npx allure --version` → 3.21.0, Gradle 9.8.2 скачан wrapper. `allure-report.zip` по ссылке артефактов — HTTP 200.
+- assert-fail: `SearchTests > successfulSearchTest() FAILED`, `ElementShould: Element should have text "QA.GURU-PHASE7-CONTROLLED-FAIL"`, BUILD FAILED; результаты, отчёт и вложения сохранены. На скриншоте из Selenoid — обычная выдача (`10.5k results`), признаков HTTP 429 нет: падение контролируемое.
+- compile-error: `SearchTests.java:13: error: ';' expected`, `Run tests` пропущена, `junit` не вызывался, `stash` — 1 файл (скрипт).
+- no-results: тесты прошли, `junit` записал результаты, затем `Error when executing always post condition: … No Allure results found in build/allure-results`; генерация пропущена, уведомление в `cleanup` выполнено с итогом FAILURE.
+- tg-error: тесты и отчёт успешны, отправка с фиктивными значениями — `URLError` (нет сети до Telegram), `Error when executing cleanup post condition`, итог FAILURE; фиктивные значения в логе не печатались.
+- Неожиданных падений, ошибок Selenoid и HTTP 429 не было. Временные изменения были только во временных ветках; после проверок они удалены локально и в `origin`.
+
+### Ограничения и непроверенное
+
+- Реальная доставка в Telegram из Jenkins не проверена: у агентов нет доступа к `api.telegram.org`, credentials не созданы. Если создать их без сетевого доступа, каждая сборка станет FAILURE на отправке. Поддержка прокси в скрипте не добавлялась.
+- В Selenoid уходят только `browserName=chrome` и настройки Selenide; версия Chrome определяется Selenoid по умолчанию и в логе не печатается. Запросы к github.com идут с IP Selenoid; однократные успехи стабильности не гарантируют.
+- Значение `selenide.remote` с ключом доступа попадает в командную строку Gradle и JVM тестов на агенте; в логе Jenkins оно маскируется.
+- Отчёт Allure в Jenkins открывается только после скачивания (CSP артефактов); Allure plugin и ссылка на отчёт в сообщении не используются.
+- Версия Node.js на агентах не закреплена и различается (26.7.0 в фазе; в августовской сборке старого job на другом агенте — 24.11.0).
+- Не проверены: отмена и таймаут сборки (сообщения не должно быть), падение checkout (уведомление тогда упадёт без скрипта), сборка ветки `master` (нет `Jenkinsfile` до слияния), повторная сборка с тем же workspace на одном агенте после падения.
+- После удаления временных веток следующий scan по стратегии по умолчанию должен удалить их items вместе с логами — не проверялось. Пробный job `sirdumowka-phase7-agent-probe` остаётся в Jenkins; удалить его может пользователь.
+- В логе каждой сборки — строка Jira REST 403 от свойства Jira, которое сервер добавляет к jobs; на pipeline не влияет.
 
 ## Фаза 8 — Review
 

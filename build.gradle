@@ -45,7 +45,7 @@ test {
         delete allureResultsDir
     }
 
-    ['selenide.baseUrl', 'selenide.browser', 'selenide.browserSize', 'selenide.headless'].each { key ->
+    ['selenide.baseUrl', 'selenide.browser', 'selenide.browserSize', 'selenide.headless', 'selenide.remote'].each { key ->
         def value = providers.systemProperty(key)
         if (value.present) {
             systemProperty key, value.get()
