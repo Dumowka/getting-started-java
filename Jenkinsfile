@@ -19,7 +19,20 @@ pipeline {
         choice(name: 'BROWSER_SIZE', choices: ['1366x768', '1920x1080'], description: 'Browser window size')
     }
 
+    environment {
+        BROWSER_SIZE = "${params.BROWSER_SIZE ?: '1366x768'}"
+    }
+
     stages {
+        stage('Check out repository') {
+            steps {
+                deleteDir()
+                script {
+                    gitCommit = checkout(scm).GIT_COMMIT
+                }
+            }
+        }
+
         stage('Validate parameters') {
             steps {
                 sh '''
@@ -31,15 +44,6 @@ pipeline {
                         ;;
                     esac
                 '''
-            }
-        }
-
-        stage('Check out repository') {
-            steps {
-                deleteDir()
-                script {
-                    gitCommit = checkout(scm).GIT_COMMIT
-                }
             }
         }
 
